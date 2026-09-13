@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const crypto = require('crypto');
+const path = require('path');
 const mysql = require('mysql2/promise');
 const { Server } = require('socket.io');
 const { createClient } = require('redis');
@@ -672,10 +673,20 @@ function normalizeMessage(row, attachment = null, status = null, reactions = [],
   };
 }
 
-app.get('/', (req,res) => res.json({ service:'chat-server', status:'ok', time:nowIso() }));
 app.get('/health', async (req,res) => {
   try { await db.query('SELECT 1'); res.json({ok:true, db:true, redis:redis.isReady}); }
   catch (e) { res.status(503).json({ok:false, error:e.message}); }
+});
+
+const frontendDist = path.resolve(__dirname, '../web/dist');
+app.use(express.static(frontendDist));
+app.use((req, res, next) => {
+  if (req.method !== 'GET' || req.path === '/health' || req.path === '/api' || req.path.startsWith('/api/') || req.path === '/socket.io' || req.path.startsWith('/socket.io/')) {
+    return next();
+  }
+  return res.sendFile(path.join(frontendDist, 'index.html'), (error) => {
+    if (error && !res.headersSent) next(error);
+  });
 });
 
 app.post('/api/auth/register', async (req, res) => {

@@ -1,0 +1,144 @@
+.module-planned-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.module-planned-panel,
+.module-setting-row,
+.profile-preview {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.module-planned-panel {
+  min-height: 92px;
+  padding: 14px;
+}
+
+.module-planned-panel strong,
+.module-planned-panel span {
+  display: block;
+}
+
+.friend-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.friend-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.friend-card-heading .profile-avatar {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+}
+
+.friend-card-actions {
+  align-items: center;
+}
+
+.message-action {
+  min-width: 88px;
+}
+
+.module-planned-panel strong {
+  color: var(--text-primary);
+  font-size: 0.8rem;
+}
+
+.module-planned-panel span {
+  margin-top: 7px;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.module-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.module-filter {
+  padding: 7px 11px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: white;
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+}
+
+.module-filter.active {
+  border-color: rgba(91, 159, 31, 0.2);
+  background: var(--bg-active);
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.module-settings-list {
+  display: grid;
+  gap: 8px;
+  max-width: 640px;
+}
+
+.module-setting-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 14px 16px;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.module-setting-row:hover {
+  background: var(--bg-hover);
+}
+
+.module-setting-row span:last-child {
+  color: var(--text-muted);
+}
+
+.profile-preview {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 420px;
+  padding: 16px;
+}
+
+.profile-avatar {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 17px;
+  background: var(--bg-active);
+  color: var(--accent-strong);
+  font-weight: 800;
+}
+
+.profile-preview strong,
+.profile-preview span {
+  display: block;
+}
+
+.profile-preview span {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+@media (max-width: 800px) {
+  .module-planned-grid {
+    grid-template-columns: 1fr;
+  }
+}

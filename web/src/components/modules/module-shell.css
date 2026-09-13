@@ -1,0 +1,119 @@
+.module-scaffold {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: linear-gradient(180deg, #fff 0%, #faf9f5 100%);
+}
+
+.module-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 32px 36px 24px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.module-eyebrow {
+  color: var(--accent-strong);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.module-header h1 {
+  margin: 7px 0 5px;
+  color: var(--text-primary);
+  font-size: clamp(1.35rem, 2vw, 1.8rem);
+  line-height: 1.15;
+}
+
+.module-header p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+.module-header-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--bg-active);
+  color: var(--accent-strong);
+  font-size: 1.2rem;
+}
+
+.module-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 28px 36px;
+  scrollbar-width: thin;
+  scrollbar-color: #d4d4cf transparent;
+}
+
+.module-body::-webkit-scrollbar {
+  width: 7px;
+}
+
+.module-body::-webkit-scrollbar-thumb {
+  border-radius: var(--radius-pill);
+  background: #d4d4cf;
+}
+
+.module-empty-state {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  min-height: 360px;
+  padding: 32px;
+  text-align: center;
+}
+
+.module-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  margin-bottom: 15px;
+  border-radius: 18px;
+  background: var(--bg-active);
+  color: var(--accent-strong);
+  font-size: 1.5rem;
+}
+
+.module-empty-state h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.module-empty-state p {
+  max-width: 380px;
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+@media (max-width: 800px) {
+  .module-header {
+    padding: 22px 18px 18px;
+  }
+
+  .module-body {
+    padding: 20px 16px calc(88px + env(safe-area-inset-bottom));
+  }
+
+  .module-empty-state {
+    min-height: 280px;
+  }
+}

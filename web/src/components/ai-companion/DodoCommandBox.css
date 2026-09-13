@@ -1,0 +1,295 @@
+.dodo-command-box {
+  position: fixed;
+  right: 28px;
+  bottom: 102px;
+  z-index: 40;
+  width: min(390px, calc(100vw - 22px));
+  max-width: 390px;
+  max-height: min(500px, 72vh);
+  overflow: auto;
+  padding: 14px 14px 12px;
+  border-radius: 22px;
+  border: 1px solid rgba(74, 90, 74, 0.12);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.12);
+  pointer-events: auto;
+  backdrop-filter: blur(7px);
+}
+
+.dodo-command-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.dodo-command-title-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dodo-command-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #f1f5ed;
+  color: #1d2b1b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.dodo-command-badge.subtle {
+  min-width: 28px;
+  background: #fff9dd;
+  color: #9b6a00;
+}
+
+.dodo-command-close {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: #f4f1ea;
+  color: #413d37;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 180ms ease, background 180ms ease;
+}
+
+.dodo-command-close:hover,
+.dodo-command-close:focus-visible {
+  background: #ebefe6;
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.dodo-command-greeting {
+  margin: 0 0 12px;
+  color: #1f2a24;
+  font-size: 0.96rem;
+  font-weight: 700;
+}
+
+.dodo-command-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.dodo-feature-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 10px 8px;
+  min-height: 66px;
+  border: 1px solid rgba(31, 41, 35, 0.08);
+  border-radius: 16px;
+  background: #f9f8f5;
+  color: #1a1d1a;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.dodo-feature-card:hover,
+.dodo-feature-card:focus-visible,
+.dodo-feature-card.selected {
+  transform: translateY(-1px);
+  border-color: rgba(90, 128, 39, 0.45);
+  box-shadow: 0 12px 22px rgba(91, 159, 31, 0.08);
+  outline: none;
+}
+
+.dodo-feature-card.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dodo-feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: #eef5e2;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.dodo-feature-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.dodo-feature-body strong {
+  font-size: 0.84rem;
+  line-height: 1.3;
+}
+
+.dodo-feature-body small {
+  color: #5e6061;
+  line-height: 1.35;
+  font-size: 0.72rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.dodo-command-form {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(31, 41, 35, 0.08);
+}
+
+.dodo-command-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #2a312d;
+  font-weight: 600;
+}
+
+.dodo-command-form textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 92px;
+  padding: 10px 12px;
+  border: 1px solid rgba(31, 41, 35, 0.12);
+  border-radius: 14px;
+  background: #fbfaf8;
+  color: #1f2922;
+  font: inherit;
+}
+
+.dodo-command-form textarea:focus,
+.dodo-command-inline select,
+.dodo-command-dual select,
+.dodo-command-form input:focus {
+  outline: 2px solid rgba(91, 159, 31, 0.2);
+  border-color: rgba(91, 159, 31, 0.35);
+}
+
+.dodo-command-inline,
+.dodo-command-dual {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.dodo-command-inline {
+  justify-content: space-between;
+}
+
+.dodo-command-inline span,
+.dodo-command-dual label span {
+  color: #3b403b;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.dodo-command-inline select,
+.dodo-command-dual select {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(31, 41, 35, 0.12);
+  background: #fbfaf8;
+  color: #1f2922;
+}
+
+.dodo-command-dual {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dodo-command-dual label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dodo-command-submit {
+  width: 100%;
+  margin-top: 16px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #8ad456 0%, #5b9f1f 100%);
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 12px 20px rgba(91, 159, 31, 0.2);
+}
+
+.settings-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.dodo-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(31, 41, 35, 0.08);
+  border-radius: 12px;
+  background: #faf9f6;
+  color: #2a312d;
+}
+
+.dodo-toggle-row input {
+  width: 20px;
+  height: 20px;
+  accent-color: #5b9f1f;
+}
+
+@media (max-width: 700px) {
+  .dodo-command-box {
+    right: 10px;
+    left: 10px;
+    bottom: 78px;
+    width: auto;
+    max-width: none;
+    max-height: min(72vh, 420px);
+    border-radius: 20px;
+    padding: 12px 12px 10px;
+  }
+
+  .dodo-command-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .dodo-command-dual {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 420px) {
+  .dodo-command-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dodo-feature-card {
+    min-height: 58px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dodo-command-box,
+  .dodo-feature-card,
+  .dodo-command-close {
+    transition: none;
+  }
+}

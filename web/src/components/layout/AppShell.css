@@ -1,0 +1,25 @@
+.app-shell-page {
+  isolation: isolate;
+}
+
+.app-shell {
+  position: relative;
+}
+
+.app-shell > .module-content {
+  grid-column: 2 / -1;
+  min-width: 0;
+  min-height: 0;
+}
+
+@media (max-width: 1000px) {
+  .app-shell > .module-content {
+    grid-column: 2 / -1;
+  }
+}
+
+@media (max-width: 800px) {
+  .app-shell > .module-content {
+    grid-column: 1;
+  }
+}

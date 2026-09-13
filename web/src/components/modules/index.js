@@ -1,0 +1,6 @@
+export { CallsModule } from './CallsModule'
+export { FriendsModule } from './FriendsModule'
+export { NotificationsModule } from './NotificationsModule'
+export { ProfileModule } from './ProfileModule'
+export { SettingsModule } from './SettingsModule'
+export { StoriesModule } from './StoriesModule'
