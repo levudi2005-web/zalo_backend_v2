@@ -172,6 +172,7 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
     }
 
     const handleError = (payload) => {
+      console.error('[CALL DEBUG] received call:error', payload)
       const message = payload?.message || 'Không thể thực hiện cuộc gọi.'
       resetCallState(message, { preserveError: true })
     }
@@ -220,6 +221,12 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
   const resetCallState = (nextError = '', options = {}) => {
     const preserveError = typeof nextError === 'object' ? Boolean(nextError.preserveError) : Boolean(options?.preserveError)
     const message = typeof nextError === 'string' ? nextError : options?.message || ''
+
+    console.warn('[CALL DEBUG] resetCallState', {
+      message,
+      preserveError,
+      callState,
+    })
 
     setError(preserveError ? message : '')
     pendingIceCandidatesRef.current = []
@@ -305,6 +312,10 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
       setLocalStream(stream)
       setIsMuted(false)
       setIsCameraOn(callType !== 'video' || !!stream.getVideoTracks().length)
+      console.log('[CALL DEBUG] ensureLocalMedia result', {
+        hasStream: !!stream,
+        callType,
+      })
       return stream
     } catch (mediaError) {
       setError('Không thể truy cập mic/camera. Vui lòng cấp quyền và thử lại.')
@@ -313,11 +324,27 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
   }
 
   const startCall = async (targetUserId, callType = 'audio') => {
+    console.log('[CALL DEBUG] startCall', {
+      targetUserId,
+      callType,
+      currentUserId,
+      socketConnected: socket?.connected,
+    })
+
     if (!socket || !targetUserId) return
     const stream = await ensureLocalMedia(callType)
+    console.log('[CALL DEBUG] ensureLocalMedia result', {
+      hasStream: !!stream,
+      callType,
+    })
     if (!stream) return
     callIsInitiatorRef.current = true
     setCallState({ status: 'connecting', callType, remoteUserId: Number(targetUserId), callId: null, incoming: false })
+    console.log('[CALL DEBUG] emitting call:start', {
+      targetUserId: Number(targetUserId),
+      callType,
+      socketConnected: socket?.connected,
+    })
     socket.emit('call:start', { targetUserId: Number(targetUserId), callType })
   }
 

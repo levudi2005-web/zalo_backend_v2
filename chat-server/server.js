@@ -2581,16 +2581,44 @@ io.on('connection', socket => {
 
   socket.on('call:start', async data => {
     try {
-      if (!socket.user) return socket.emit('call:error', { message: 'Chưa xác thực' });
+      console.log('[CALL DEBUG] call:start received', {
+        userId: socket.user?.id,
+        targetUserId: data?.targetUserId,
+        callType: data?.callType,
+        socketId: socket.id,
+      });
+
+      if (!socket.user) {
+        console.warn('[CALL DEBUG] reject', { reason: 'unauthenticated', userId: socket.user?.id, targetUserId: data?.targetUserId });
+        return socket.emit('call:error', { message: 'Chưa xác thực' });
+      }
       const targetUserId = Number(data?.targetUserId);
       const callType = data?.callType === 'video' ? 'video' : 'audio';
+
+      console.log('[CALL DEBUG] call state before busy check', {
+        callerId: socket.user?.id,
+        targetUserId,
+        callerCallId: userCallMap.get(socket.user?.id),
+        targetCallId: userCallMap.get(targetUserId),
+        targetOnline: socketsByUser.has(targetUserId),
+      });
+
       if (!targetUserId || targetUserId === socket.user.id) {
+        console.warn('[CALL DEBUG] reject', { reason: 'invalid/self', callerId: socket.user?.id, targetUserId });
         return socket.emit('call:error', { message: 'Không thể gọi chính mình hoặc thiếu người nhận.' });
       }
       if (userCallMap.has(socket.user.id) || userCallMap.has(targetUserId)) {
+        console.warn('[CALL DEBUG] reject', {
+          reason: 'busy',
+          callerId: socket.user?.id,
+          targetUserId,
+          callerCallId: userCallMap.get(socket.user?.id),
+          targetCallId: userCallMap.get(targetUserId),
+        });
         return socket.emit('call:error', { message: 'Một trong hai người đang có cuộc gọi đang hoạt động.' });
       }
       if (!socketsByUser.has(targetUserId)) {
+        console.warn('[CALL DEBUG] reject', { reason: 'target offline', callerId: socket.user?.id, targetUserId });
         return socket.emit('call:error', { message: 'Người nhận hiện không online.' });
       }
       const callId = `call-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -2598,6 +2626,13 @@ io.on('connection', socket => {
       callSessions.set(callId, session);
       userCallMap.set(socket.user.id, callId);
       userCallMap.set(targetUserId, callId);
+
+      console.log('[CALL DEBUG] call:start success', {
+        callId,
+        initiatorId: socket.user?.id,
+        targetUserId,
+        participants: [...session.participants],
+      });
 
       for (const participantId of session.participants) {
         const socketIds = socketsByUser.get(participantId) || new Set();
@@ -2619,6 +2654,7 @@ io.on('connection', socket => {
       }
       socket.emit('call:started', { callId, targetUserId, callType });
     } catch (error) {
+      console.error('[CALL DEBUG] reject', { reason: 'exception', error: error?.message || String(error), userId: socket.user?.id, targetUserId: data?.targetUserId });
       console.error('Socket call:start error:', error);
       socket.emit('call:error', { message: 'Không thể bắt đầu cuộc gọi.' });
     }
