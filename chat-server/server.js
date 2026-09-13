@@ -37,9 +37,10 @@ const FRIEND_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const socketsByUser = new Map();
 const SESSION_COOKIE = 'zalo_session';
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_DAYS || 30) * 24 * 60 * 60 * 1000;
+const PRODUCTION_ORIGIN = 'https://zalo-backend-v2.onrender.com';
 const configuredOrigins = String(process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:4173')
   .split(',')
-  .map((origin) => origin.trim())
+  .map((origin) => origin.trim().replace(/\/$/, ''))
   .filter(Boolean);
 const allowedOrigins = configuredOrigins.includes('*')
   ? [
@@ -49,11 +50,11 @@ const allowedOrigins = configuredOrigins.includes('*')
       'http://127.0.0.1:4173',
       'http://localhost:3000',
       'http://127.0.0.1:3000',
-      'https://zalo-backend-v2.onrender.com',
+      PRODUCTION_ORIGIN,
     ]
   : configuredOrigins;
-if (!allowedOrigins.includes('https://zalo-backend-v2.onrender.com')) {
-  allowedOrigins.push('https://zalo-backend-v2.onrender.com');
+if (!allowedOrigins.includes(PRODUCTION_ORIGIN)) {
+  allowedOrigins.push(PRODUCTION_ORIGIN);
 }
 
 const io = new Server(server, {
@@ -66,7 +67,7 @@ const io = new Server(server, {
 });
 
 function corsOrigin(origin, callback) {
-  if (!origin || allowedOrigins.includes(origin)) {
+  if (!origin || origin === PRODUCTION_ORIGIN || allowedOrigins.includes(origin.replace(/\/$/, ''))) {
     return callback(null, true);
   }
   return callback(new Error('Origin không được phép'));
