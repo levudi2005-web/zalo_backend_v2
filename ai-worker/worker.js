@@ -40,6 +40,24 @@ redis.on('error', (err) => {
 
 const QUEUE = process.env.AI_QUEUE_KEY || 'ai:jobs';
 const CHANNEL = process.env.CHAT_CHANNEL || 'chat:broadcast';
+const GROQ_TIMEOUT_MS = Number(process.env.GROQ_TIMEOUT_MS || 30000);
+const GROQ_MAX_ATTEMPTS = 3;
+
+function wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function retryBackoff(attempt) {
+    return Math.min(750 * Math.pow(2, attempt - 1), 4000);
+}
+
+redis.on('error', (err) => {
+    console.error('[AI] Redis error:', err && err.message ? err.message : String(err));
+});
+
+redis.on('end', () => {
+    console.warn('[AI] Redis connection ended; worker will reconnect when queue polling resumes.');
+});
 
 function startHealthServer() {
     const port = Number(process.env.PORT || 3000);
@@ -251,7 +269,8 @@ async function ensureAIMembership(conversationId, aiUserId) {
 // =========================
 async function callAI(messages, model, options = {}) {
     if (!process.env.GROQ_API_KEY) {
-        throw new Error('Thiếu GROQ_API_KEY trong file .env');
+        console.error('[AI] GROQ_API_KEY missing in environment; skipping Groq request');
+        throw new Error('GROQ_API_KEY missing in environment');
     }
 
     const buildPayload = (withReasoning) => ({
@@ -273,7 +292,7 @@ async function callAI(messages, model, options = {}) {
             Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
             'Content-Type': 'application/json',
         },
-        timeout: 30000,
+        timeout: GROQ_TIMEOUT_MS,
     };
 
     const tryRequest = async (withReasoning) => {
@@ -283,38 +302,89 @@ async function callAI(messages, model, options = {}) {
             requestConfig,
         );
 
-        const content =
-            response.data?.choices?.[0]?.message?.content || '';
-
-        return content
-            .replace(/<think>[\s\S]*?<\/think>/gi, '')
-            .trim();
+        const content = response.data?.choices?.[0]?.message?.content || '';
+        return content.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
     };
 
-    try {
-        return await tryRequest(true);
-    } catch (error) {
-        const text = [
-            error.response?.data?.error?.message,
-            error.response?.data?.message,
-            error.message,
-        ].filter(Boolean).join(' ');
+    let lastError;
+    for (let attempt = 1; attempt <= GROQ_MAX_ATTEMPTS; attempt += 1) {
+        try {
+            try {
+                return await tryRequest(true);
+            } catch (error) {
+                const text = [
+                    error.response?.data?.error?.message,
+                    error.response?.data?.message,
+                    error.message,
+                ].filter(Boolean).join(' ');
 
-        const shouldRetryWithoutReasoning = (
-            error.response?.status === 400 ||
-            error.response?.status === 422
-        ) && /reasoning|unsupported|invalid/i.test(text);
+                const status = error.response?.status;
+                const retryWithoutReasoning = (
+                    status === 400 ||
+                    status === 422
+                ) && /reasoning|unsupported|invalid/i.test(text);
 
-        if (!shouldRetryWithoutReasoning) {
-            throw error;
+                if (!retryWithoutReasoning) {
+                    throw error;
+                }
+
+                console.warn('[AI] Groq rejected reasoning_effort; retrying without it:', text);
+                return await tryRequest(false);
+            }
+        } catch (error) {
+            lastError = error;
+            const text = [
+                error.response?.data?.error?.message,
+                error.response?.data?.message,
+                error.message,
+            ].filter(Boolean).join(' ');
+            const status = error.response?.status;
+
+            const isRetryable = (
+                !status ||
+                status === 408 ||
+                status === 429 ||
+                status >= 500
+            );
+
+            const isNonRetryable = (
+                status === 400 ||
+                status === 401 ||
+                status === 403 ||
+                status === 422
+            );
+
+            if (status === 401 || status === 403) {
+                console.error('[AI] Groq auth/configuration error: GROQ_API_KEY unauthorized or invalid.');
+                throw new Error('GROQ_API_KEY configuration error: unauthorized');
+            }
+
+            if (status === 400 || status === 422) {
+                console.error('[AI] Groq invalid request:', text);
+                throw error;
+            }
+
+            if (isNonRetryable) {
+                console.error('[AI] Groq non-retryable error:', text);
+                throw error;
+            }
+
+            if (!isRetryable || attempt >= GROQ_MAX_ATTEMPTS) {
+                console.error('[AI] Groq request failed:', text);
+                throw error;
+            }
+
+            const backoffMs = retryBackoff(attempt);
+            console.warn(`[AI] Groq retry ${attempt + 1}/${GROQ_MAX_ATTEMPTS} after ${backoffMs}ms; status=${status || 'network'}; reason=${text}`);
+            await wait(backoffMs);
         }
-
-        console.warn(
-            '[AI WORKER] Groq rejected reasoning_effort; retrying without it.',
-            text,
-        );
-        return await tryRequest(false);
     }
+
+    if (lastError) {
+        throw lastError;
+    }
+
+    throw new Error('Groq request failed');
 }
 
 // =========================
@@ -324,64 +394,60 @@ async function processJob(job) {
     const started = Date.now();
     const receivedAt = Date.now();
     const enqueuedAt = Number(job.enqueued_at || receivedAt);
+    const source = String(job.source || 'sql');
 
     console.log(
-        `[AI WORKER] Job received: conversation=${job.conversation_id}, message=${job.message_id}`
+        `[AI] Job received conversation=${job.conversation_id || 'unknown'} message=${job.message_id || job.request_id || 'unknown'} source=${source}`
     );
 
-    await redis.publish(
-        CHANNEL,
-        JSON.stringify({
-            type: job.source === 'quick' ? 'ai:quick:processing' : 'ai:processing',
-            conversation_id: job.conversation_id,
-            user_id: job.user_id,
-            request_id: job.request_id,
-            message_id: job.message_id,
-            timing: job.source === 'quick' ? {
-                server_received_at: Number(job.server_received_at || 0),
-                worker_received_at: receivedAt,
-                queue_ms: Math.max(0, receivedAt - enqueuedAt),
-            } : undefined,
-        })
-    );
-    console.log('[AI WORKER] Published ai:processing');
+    try {
+        await redis.publish(
+            CHANNEL,
+            JSON.stringify({
+                type: source === 'quick' ? 'ai:quick:processing' : 'ai:processing',
+                conversation_id: job.conversation_id,
+                user_id: job.user_id,
+                request_id: job.request_id,
+                message_id: job.message_id,
+                timing: source === 'quick' ? {
+                    server_received_at: Number(job.server_received_at || 0),
+                    worker_received_at: receivedAt,
+                    queue_ms: Math.max(0, receivedAt - enqueuedAt),
+                } : undefined,
+            })
+        );
+    } catch (publishError) {
+        console.error('[AI] Failed to publish processing event:', publishError.message);
+    }
+
+    console.log('[AI] Published ai:processing');
 
     try {
         console.log(
-            `[AI WORKER] Processing conversation: ${job.conversation_id}`
+            `[AI] Processing conversation=${job.conversation_id || 'unknown'} source=${source}`
         );
 
-        // -------------------------
-        // AI AGENT
-        // -------------------------
-        const agent = job.source === 'quick'
+        const agent = source === 'quick'
             ? { model_name: process.env.AI_MODEL || 'openai/gpt-oss-20b' }
             : await ensureAgent();
 
-        // -------------------------
-        // PROMPT
-        // -------------------------
         const prompt =
             String(job.message || '')
                 .replace(/@ai\b/i, '')
                 .trim() ||
             'Xin chào, bạn có thể giúp tôi gì?';
 
-        // -------------------------
-        // CONTEXT
-        // -------------------------
         let messages = [];
 
-        if (job.source === 'quick') {
+        if (source === 'quick') {
             messages.push(...(Array.isArray(job.history) ? job.history : []));
-        } else if (job.source === 'sql') {
+        } else if (source === 'sql' || source === 'temporary') {
             const history = await getContext(
                 job.conversation_id,
                 job.user_id,
                 job.message_id,
                 job.is_ai_conversation === true
             );
-
             messages.push(...history);
         }
 
@@ -390,14 +456,11 @@ async function processJob(job) {
             content: `${job.username || 'User'}: ${prompt}`
         });
 
-        // -------------------------
-        // GỌI AI
-        // -------------------------
-        console.log('[AI WORKER] Calling Groq...');
+        console.log(`[AI] Calling Groq model=${agent.model_name || model || 'openai/gpt-oss-20b'}`);
         const reply = await callAI(
             messages,
             agent.model_name,
-            job.source === 'quick'
+            source === 'quick'
                 ? {
                     systemPrompt: QUICK_SYSTEM_PROMPT,
                     maxTokens: 220,
@@ -410,41 +473,41 @@ async function processJob(job) {
             throw new Error('AI không trả về nội dung');
         }
 
-        console.log('[AI WORKER] AI response received');
+        console.log('[AI] Groq success reply_bytes=' + String(reply.length));
 
-        if (job.source === 'quick') {
-            await redis.publish(
-                CHANNEL,
-                JSON.stringify({
-                    type: 'ai:quick:done',
-                    user_id: job.user_id,
-                    request_id: job.request_id,
-                    message_id: job.message_id,
-                    timing: {
-                        server_received_at: Number(job.server_received_at || 0),
-                        enqueued_at: enqueuedAt,
-                        worker_received_at: receivedAt,
-                        groq_done_at: Date.now(),
-                        queue_ms: Math.max(0, receivedAt - enqueuedAt),
-                        worker_ms: Date.now() - receivedAt,
-                        total_worker_ms: Date.now() - started,
-                    },
-                    message: {
-                        id: `quick-${job.request_id}`,
-                        username: 'AI',
-                        message: reply,
-                        message_type: 'text',
-                        created_at: new Date().toISOString(),
-                    },
-                })
-            );
-            console.log(`[AI WORKER] Quick job completed in ${Date.now() - started}ms`);
+        if (source === 'quick') {
+            try {
+                await redis.publish(
+                    CHANNEL,
+                    JSON.stringify({
+                        type: 'ai:quick:done',
+                        user_id: job.user_id,
+                        request_id: job.request_id,
+                        message_id: job.message_id,
+                        timing: {
+                            server_received_at: Number(job.server_received_at || 0),
+                            enqueued_at: enqueuedAt,
+                            worker_received_at: receivedAt,
+                            groq_done_at: Date.now(),
+                            queue_ms: Math.max(0, receivedAt - enqueuedAt),
+                            worker_ms: Date.now() - receivedAt,
+                            total_worker_ms: Date.now() - started,
+                        },
+                        message: {
+                            id: `quick-${job.request_id}`,
+                            username: 'AI',
+                            message: reply,
+                            message_type: 'text',
+                            created_at: new Date().toISOString(),
+                        },
+                    })
+                );
+                console.log(`[AI] Quick job completed in ${Date.now() - started}ms`);
+            } catch (publishError) {
+                console.error('[AI] Failed to publish quick done:', publishError.message);
+            }
             return;
         }
-
-        // -------------------------
-        // TÌM AI CONVERSATION
-        // -------------------------
 
         const [conversationRows] = await db.query(
             `
@@ -457,18 +520,11 @@ async function processJob(job) {
             ORDER BY id DESC
             LIMIT 1
             `,
-            [
-                job.user_id,
-                agent.id
-            ]
+            [job.user_id, agent.id]
         );
 
-        let aiConversation =
-            conversationRows[0];
+        let aiConversation = conversationRows[0];
 
-        // -------------------------
-        // TẠO AI CONVERSATION
-        // -------------------------
         if (!aiConversation) {
             const [result] = await db.query(
                 `
@@ -481,50 +537,29 @@ async function processJob(job) {
                 )
                 VALUES (?, ?, ?, ?)
                 `,
-                [
-                    job.user_id,
-                    agent.id,
-                    'AI Chat',
-                    'active'
-                ]
+                [job.user_id, agent.id, 'AI Chat', 'active']
             );
 
-            aiConversation = {
-                id: result.insertId
-            };
+            aiConversation = { id: result.insertId };
         }
 
-        // -------------------------
-        // LƯU AI MESSAGE
-        // -------------------------
-        const responseMs =
-            Date.now() - started;
+        const responseMs = Date.now() - started;
 
-        const [messageResult] =
-            await db.query(
-                `
-                INSERT INTO ai_messages
-                (
-                    ai_conversation_id,
-                    sender_type,
-                    content,
-                    model_name,
-                    response_ms
-                )
-                VALUES (?, ?, ?, ?, ?)
-                `,
-                [
-                    aiConversation.id,
-                    'assistant',
-                    reply,
-                    agent.model_name,
-                    responseMs
-                ]
-            );
+        const [messageResult] = await db.query(
+            `
+            INSERT INTO ai_messages
+            (
+                ai_conversation_id,
+                sender_type,
+                content,
+                model_name,
+                response_ms
+            )
+            VALUES (?, ?, ?, ?, ?)
+            `,
+            [aiConversation.id, 'assistant', reply, agent.model_name, responseMs]
+        );
 
-        // -------------------------
-        // LƯU USAGE
-        // -------------------------
         await db.query(
             `
             INSERT INTO ai_message_usage
@@ -536,12 +571,7 @@ async function processJob(job) {
             )
             VALUES (?, ?, ?, ?)
             `,
-            [
-                messageResult.insertId,
-                'groq',
-                agent.model_name,
-                0
-            ]
+            [messageResult.insertId, 'groq', agent.model_name, 0]
         );
 
         const aiUser = await ensureAIUser();
@@ -579,56 +609,45 @@ async function processJob(job) {
             updated_at: chatMessage.updated_at,
         };
 
-        // -------------------------
-        // BÁO HOÀN THÀNH KÈM AI MESSAGE
-        // -------------------------
         const doneEvent = {
             type: 'ai:done',
-            conversation_id:
-                job.conversation_id,
-            message_id:
-                job.message_id,
-            message: aiMessage
+            conversation_id: job.conversation_id,
+            message_id: job.message_id,
+            message: aiMessage,
         };
 
         console.log('[AI TRACE] broadcast payload:', doneEvent);
-        await redis.publish(
-            CHANNEL,
-            JSON.stringify(doneEvent)
-        );
-        console.log('[AI WORKER] Published ai:done');
-
-        console.log(
-            `[AI WORKER] Job completed in ${responseMs}ms`
-        );
-
+        await redis.publish(CHANNEL, JSON.stringify(doneEvent));
+        console.log('[AI] Job completed in ' + String(responseMs) + 'ms');
     } catch (error) {
-        console.error(
-            '[AI WORKER] Job failed:',
-            error.response?.data ||
-            error.message
-        );
+        const msg = error && error.message ? error.message : String(error);
+        console.error('[AI] Job failed:', msg);
 
         try {
-            await redis.publish(
-                CHANNEL,
-                JSON.stringify({
-                    type: job.source === 'quick' ? 'ai:quick:done' : 'ai:done',
-                    conversation_id:
-                        job.conversation_id,
+            const terminalEvent = source === 'quick'
+                ? {
+                    type: 'ai:quick:done',
+                    conversation_id: job.conversation_id,
                     user_id: job.user_id,
                     request_id: job.request_id,
-                    message_id:
-                        job.message_id,
-                    error: error.message,
-                })
-            );
-            console.log('[AI WORKER] Published ai:done (error)');
+                    message_id: job.message_id,
+                    error: msg,
+                    success: false,
+                }
+                : {
+                    type: 'ai:done',
+                    conversation_id: job.conversation_id,
+                    user_id: job.user_id,
+                    request_id: job.request_id,
+                    message_id: job.message_id,
+                    error: msg,
+                    success: false,
+                };
+
+            await redis.publish(CHANNEL, JSON.stringify(terminalEvent));
+            console.log('[AI] Published AI error event:', source === 'quick' ? 'ai:quick:done' : 'ai:done');
         } catch (publishError) {
-            console.error(
-                '[AI WORKER] Failed to publish error result:',
-                publishError.message
-            );
+            console.error('[AI] Failed to publish error result:', publishError.message);
         }
     }
 }
@@ -700,10 +719,6 @@ async function main() {
 // START
 // =========================
 main().catch(error => {
-    console.error(
-        'AI worker startup error:',
-        error.message
-    );
-
+    console.error('[AI] Worker startup error:', error && error.message ? error.message : String(error));
     process.exit(1);
 });

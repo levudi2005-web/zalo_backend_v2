@@ -37,6 +37,7 @@ const ALLOWED_REACTIONS = new Set(['❤️', '👍', '😂', '😮', '😢']);
 const FRIEND_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 const socketsByUser = new Map();
+const AI_ENQUEUE_DEDUPE = new Map();
 const SESSION_COOKIE = 'zalo_session';
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_DAYS || 30) * 24 * 60 * 60 * 1000;
 const configuredOrigins = String(process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:4173')
@@ -1711,25 +1712,30 @@ app.post('/api/dodo/quick', requireAuth, async (req,res) => {
         }))
       : [];
 
-    await enqueueAI({
-      source: 'quick',
-      action: String(action || 'ask'),
-      user_id: user.id,
-      username: user.username,
-      message_id: requestId,
-      request_id: requestId,
-      message: text,
-      server_received_at: serverReceivedAt,
-      enqueued_at: Date.now(),
-      context: context && typeof context === 'object'
-        ? {
-          type: String(context.type || '').slice(0, 40),
-          content: String(context.content || '').slice(0, 4000),
-          source: String(context.source || '').slice(0, 80),
-        }
-        : null,
-      history: cleanHistory,
-    });
+    try {
+      await enqueueAI({
+        source: 'quick',
+        action: String(action || 'ask'),
+        user_id: user.id,
+        username: user.username,
+        message_id: requestId,
+        request_id: requestId,
+        message: text,
+        server_received_at: serverReceivedAt,
+        enqueued_at: Date.now(),
+        context: context && typeof context === 'object'
+          ? {
+            type: String(context.type || '').slice(0, 40),
+            content: String(context.content || '').slice(0, 4000),
+            source: String(context.source || '').slice(0, 80),
+          }
+          : null,
+        history: cleanHistory,
+      });
+    } catch (enqueueError) {
+      console.error('[AI] Dodo quick enqueue failed:', enqueueError.message);
+      return res.status(503).json({ error: 'Không thể kết nối AI, vui lòng thử lại.' });
+    }
 
     res.json({
       success: true,
@@ -1974,15 +1980,22 @@ app.post('/api/messages', requireAuth, async (req,res) => {
       aiConversation || /@ai\b/i.test(text);
 
     if (shouldTriggerAI) {
-      await enqueueAI({
-        source: 'sql',
-        conversation_id: conversationId,
-        is_ai_conversation: aiConversation,
-        user_id: user.id,
-        username: user.username,
-        message_id: r.insertId,
-        message: text,
-      });
+      try {
+        await enqueueAI({
+          source: 'sql',
+          conversation_id: conversationId,
+          is_ai_conversation: aiConversation,
+          user_id: user.id,
+          username: user.username,
+          message_id: r.insertId,
+          message: text,
+          client_message_id: client_message_id || null,
+          request_id: String(client_message_id || `chat-${r.insertId}-${Date.now()}`),
+        });
+      } catch (enqueueError) {
+        console.error('[AI] SQL-message enqueue failed:', enqueueError.message);
+        return res.status(503).json({ error: 'Không thể kết nối AI, vui lòng thử lại.' });
+      }
     }
 
     res.json({
@@ -2386,7 +2399,73 @@ app.delete('/api/messages/:id/reactions', requireAuth, async (req, res) => {
   }
 });
 
-async function enqueueAI(job){ await redis.rPush(AI_QUEUE_KEY, JSON.stringify(job)); }
+async function enqueueAI(job) {
+  if (!job || typeof job !== 'object' || Array.isArray(job)) {
+    throw new Error('Invalid AI job payload');
+  }
+
+  const source = String(job.source || 'sql').trim();
+  if (!['sql', 'temporary', 'quick'].includes(source)) {
+    throw new Error('Invalid AI source');
+  }
+
+  const text = String(job.message || '').trim();
+  if (!text) {
+    throw new Error('AI job requires non-empty message');
+  }
+
+  if (!job.user_id) {
+    throw new Error('AI job requires user_id');
+  }
+
+  if (source !== 'quick') {
+    const conversationId = Number(job.conversation_id);
+    if (!Number.isInteger(conversationId) || conversationId <= 0) {
+      throw new Error('AI job requires conversation_id');
+    }
+  }
+
+  const requestId = String(
+    job.request_id ||
+    job.client_message_id ||
+    job.message_id ||
+    `${String(job.conversation_id || 'unknown')}:${String(job.user_id || 'unknown')}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
+  ).trim();
+
+  if (!requestId) {
+    throw new Error('AI job requires request_id');
+  }
+
+  job.request_id = requestId;
+  if (job.client_message_id) {
+    job.client_message_id = String(job.client_message_id);
+  }
+
+  const dedupeKey = String(
+    job.request_id ||
+    job.client_message_id ||
+    job.message_id ||
+    `${job.conversation_id || 'unknown'}:${job.user_id || 'unknown'}:${String(job.message || '').slice(0, 80)}`
+  );
+
+  const now = Date.now();
+  const lastSeen = AI_ENQUEUE_DEDUPE.get(dedupeKey);
+  if (lastSeen && now - lastSeen < 500) {
+    console.log(`[AI] Suppressed duplicate enqueue key=${dedupeKey.slice(0,80)}`);
+    return false;
+  }
+  AI_ENQUEUE_DEDUPE.set(dedupeKey, now);
+
+  try {
+    await redis.rPush(AI_QUEUE_KEY, JSON.stringify(job));
+    console.log(`[AI] Enqueued job queue=${AI_QUEUE_KEY} request_id=${requestId} conversation=${job.conversation_id || 'unknown'} message=${job.message_id || requestId || job.client_message_id || 'unknown'} source=${source}`);
+    return true;
+  } catch (error) {
+    const safeMsg = error && error.message ? error.message : String(error);
+    console.error('[AI] Enqueue failed:', safeMsg);
+    throw new Error('Không thể kết nối AI, vui lòng thử lại.');
+  }
+}
 
 async function canExposePresence(userId) {
   const [rows] = await db.query(

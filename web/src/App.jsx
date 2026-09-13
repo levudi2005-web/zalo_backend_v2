@@ -17,6 +17,7 @@ import './App.css'
 
 const API_URL = (import.meta.env.VITE_API_URL || 'https://zalo-backend-v2.onrender.com').replace(/\/$/, '')
 const MEDIA_URL = String(import.meta.env.VITE_MEDIA_URL || 'https://zalo-media.onrender.com').replace(/\/$/, '')
+const AI_CONVERSATION_ID = Number(import.meta.env.VITE_AI_CONVERSATION_ID || 30001)
 
 const emojis = ['😀', '😂', '😍', '👍', '🔥', '🎉', '😎', '❤️']
 
@@ -70,6 +71,7 @@ function App() {
   const [typingUsers, setTypingUsers] = useState([])
   const [conversationPresence, setConversationPresence] = useState([])
   const [aiProcessing, setAiProcessing] = useState(false)
+  const [aiStatus, setAiStatus] = useState('idle')
   const [error, setError] = useState('')
 
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -131,6 +133,7 @@ function App() {
   const hasMoreHistoryRef = useRef(true)
   const loadingOlderRef = useRef(false)
   const socketRef = useRef(null)
+  const aiProcessingTimeoutRef = useRef(null)
   const typingTimerRef = useRef(null)
   const onlineUsersRef = useRef([])
   const typingStateRef = useRef({ isTyping: false, conversationId: null })
@@ -777,6 +780,16 @@ function App() {
       socket.on('ai_processing', (data) => {
         console.log('AI đang xử lý:', data)
         setAiProcessing(true)
+        setAiStatus('processing')
+        setError('')
+        if (aiProcessingTimeoutRef.current) {
+          clearTimeout(aiProcessingTimeoutRef.current)
+        }
+        aiProcessingTimeoutRef.current = setTimeout(() => {
+          console.warn('[AI TRACE] AI processing timeout fallback: clearing ai_processing state without inventing a false error.')
+          setAiProcessing(false)
+          setAiStatus('waiting')
+        }, 12000)
       })
     
       /*
@@ -787,6 +800,10 @@ function App() {
           event: 'ai_processing_done',
           payload: data,
         })
+        if (aiProcessingTimeoutRef.current) {
+          clearTimeout(aiProcessingTimeoutRef.current)
+          aiProcessingTimeoutRef.current = null
+        }
         const normalized = normalizeMessage(data?.message)
         console.log('[AI TRACE] normalized message:', normalized)
         if (normalized.text && normalized.sender === 'ai') {
@@ -794,6 +811,13 @@ function App() {
           console.log('[AI TRACE] message added:', normalized)
         }
         setAiProcessing(false)
+        if (data?.error) {
+          setAiStatus('error')
+          setError(data.error)
+        } else {
+          setAiStatus('success')
+          setError('')
+        }
       })
     
       socket.on('dodo_quick_processing', (data) => {
@@ -844,6 +868,10 @@ function App() {
        */
       return () => {
         stopTyping()
+        if (aiProcessingTimeoutRef.current) {
+          clearTimeout(aiProcessingTimeoutRef.current)
+          aiProcessingTimeoutRef.current = null
+        }
         socketRef.current = null
         setTypingUsers([])
         setConversationPresence([])
@@ -1649,14 +1677,22 @@ function App() {
   /*
    * Tìm kiếm danh sách chat
    */
+  const aiAssistantChat = {
+    id: AI_CONVERSATION_ID,
+    name: 'AI Assistant',
+    last_message_text: 'AI Assistant',
+    last_message_at: null,
+    conversation_type: 'ai',
+    avatar_url: dodoAssets.base,
+    unread_count: 0,
+    is_muted: 0,
+    is_pinned: 0,
+  }
+
   const filteredChats =
-    conversations.filter((chat) =>
-      chat.name
-        .toLowerCase()
-        .includes(
-          search.toLowerCase(),
-        ),
-    )
+    conversations.filter((chat) => chat.name.toLowerCase().includes(search.toLowerCase())).concat(
+      conversations.some((chat) => Number(chat.id) === Number(AI_CONVERSATION_ID)) ? [] : [aiAssistantChat],
+    ).filter((chat) => chat.name.toLowerCase().includes(search.toLowerCase()))
 
   const filteredForwardConversations = forwardConversations.filter((conversation) => (
     conversation.name.toLowerCase().includes(forwardSearch.toLowerCase())
@@ -1948,6 +1984,21 @@ function App() {
 
         <section className="chat-window">
 
+          {Number(conversationId) === Number(AI_CONVERSATION_ID) && (
+            <div className="ai-chat-brief">
+              <div className="ai-chat-brief-avatar">
+                <img className="dodo-avatar-image" src={dodoAssets.base} alt="Dodo" />
+              </div>
+              <div className="ai-chat-brief-content">
+                <span className="ai-chat-kicker">🤖 AI Assistant</span>
+                <strong>AI Assistant</strong>
+                <span className="ai-chat-status-line">
+                  {aiStatus === 'processing' ? 'Đang xử lý' : aiStatus === 'waiting' ? 'Đang khởi động' : aiStatus === 'error' ? 'AI phản hồi thất bại' : aiStatus === 'success' ? 'AI đã phản hồi' : 'Online'}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* HEADER */}
 
           <header className="chat-header">
@@ -1974,11 +2025,13 @@ function App() {
               <div>
 
                 <h2>
-                    {conversationId && conversationInfo?.type === 'direct'
-                    ? conversationInfo.partnerName
-                    : conversationId && conversationInfo?.type === 'group'
-                      ? conversationInfo.name
-                      : 'Chọn cuộc trò chuyện'}
+                    {Number(conversationId) === Number(AI_CONVERSATION_ID)
+                    ? 'AI Assistant'
+                    : conversationId && conversationInfo?.type === 'direct'
+                      ? conversationInfo.partnerName
+                      : conversationId && conversationInfo?.type === 'group'
+                        ? conversationInfo.name
+                        : 'Chọn cuộc trò chuyện'}
                 </h2>
 
                 <span className="status">
@@ -1996,13 +2049,21 @@ function App() {
                 </span>
 
                 <span className="presence-status">
-                  {conversationId && conversationInfo?.type === 'direct'
-                    ? conversationPresence.includes(conversationInfo.partnerId)
-                      ? 'Đang hoạt động'
-                      : 'Ngoài tuyến'
-                    : conversationId && conversationPresence.filter((id) => id !== Number(authUser.id)).length
-                      ? `${conversationPresence.filter((id) => id !== Number(authUser.id)).length} người online`
-                      : conversationId ? 'Không có người khác online' : 'Kết bạn để bắt đầu trò chuyện'}
+                  {Number(conversationId) === Number(AI_CONVERSATION_ID)
+                    ? (aiStatus === 'processing'
+                        ? 'AI đang xử lý...'
+                        : aiStatus === 'waiting'
+                          ? 'AI đang khởi động...'
+                          : aiStatus === 'error'
+                            ? 'AI phản hồi thất bại'
+                            : 'AI Online')
+                    : conversationId && conversationInfo?.type === 'direct'
+                      ? conversationPresence.includes(conversationInfo.partnerId)
+                        ? 'Đang hoạt động'
+                        : 'Ngoài tuyến'
+                      : conversationId && conversationPresence.filter((id) => id !== Number(authUser.id)).length
+                        ? `${conversationPresence.filter((id) => id !== Number(authUser.id)).length} người online`
+                        : conversationId ? 'Không có người khác online' : 'Kết bạn để bắt đầu trò chuyện'}
                 </span>
 
               </div>
@@ -2181,6 +2242,33 @@ function App() {
             className="messages"
             onScroll={handleMessagesScroll}
           >
+
+            {Number(conversationId) === Number(AI_CONVERSATION_ID) && (
+              <div className="ai-chat-panel">
+                <div className="ai-chat-panel-head">
+                  <div className="ai-chat-panel-avatar">
+                    <img className="dodo-avatar-image" src={dodoAssets.base} alt="Dodo" />
+                  </div>
+                  <div>
+                    <span className="ai-chat-panel-title">AI Assistant</span>
+                    <span className="ai-chat-panel-status">
+                      {aiStatus === 'processing' ? 'Đang xử lý' : aiStatus === 'waiting' ? 'Đang khởi động' : aiStatus === 'error' ? 'Thất bại' : 'Online'}
+                    </span>
+                  </div>
+                </div>
+                <div className="ai-chat-panel-empty">
+                  <strong>Xin chào! Tôi là AI Assistant.</strong>
+                  <span>Hỏi tôi giải thích, viết code, tóm tắt hoặc trò chuyện.</span>
+                </div>
+                <div className="ai-chat-quick-actions">
+                  {['Giải thích bài này', 'Viết code', 'Tóm tắt', 'Hỏi AI'].map((label) => (
+                    <button type="button" className="ai-chat-quick-action" key={label} onClick={() => setMessage(label)}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {loadingOlder && (
               <div className="history-loader" aria-live="polite">
