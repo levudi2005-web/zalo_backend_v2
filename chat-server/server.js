@@ -49,6 +49,7 @@ const allowedOrigins = configuredOrigins.includes('*')
       'http://127.0.0.1:4173',
       'http://localhost:3000',
       'http://127.0.0.1:3000',
+      'https://zalo-backend-v2.onrender.com',
     ]
   : configuredOrigins;
 
