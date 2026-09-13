@@ -30,20 +30,47 @@ function AuthScreen({ mode, onModeChange, onSubmit, error, loading }) {
 
   return (
     <main className="auth-screen">
-      <form className="auth-panel" onSubmit={(event) => { event.preventDefault(); onSubmit(form) }}>
-        <div className="auth-mark">Z</div>
-        <p className="auth-kicker">Zalo Mini</p>
-        <h1>{mode === 'login' ? 'Chào mừng trở lại' : 'Tạo tài khoản mới'}</h1>
-        <p className="auth-subtitle">{mode === 'login' ? 'Đăng nhập để tiếp tục cuộc trò chuyện.' : 'Đăng ký để bắt đầu trò chuyện an toàn.'}</p>
-        <label>Username<input value={form.username} onChange={(event) => update('username', event.target.value)} autoComplete="username" required minLength={3} maxLength={50} /></label>
-        <label>Mật khẩu<input type="password" value={form.password} onChange={(event) => update('password', event.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required minLength={8} /></label>
-        {mode === 'register' && <label>Xác nhận mật khẩu<input type="password" value={form.confirm_password} onChange={(event) => update('confirm_password', event.target.value)} autoComplete="new-password" required minLength={8} /></label>}
-        {error && <p className="auth-error" role="alert">{error}</p>}
-        <button className="auth-submit" type="submit" disabled={loading}>{loading ? 'Đang xử lý...' : mode === 'login' ? 'Đăng nhập' : 'Đăng ký'}</button>
-        <button className="auth-switch" type="button" onClick={() => onModeChange(mode === 'login' ? 'register' : 'login')}>
-          {mode === 'login' ? 'Chưa có tài khoản? Đăng ký' : 'Đã có tài khoản? Đăng nhập'}
-        </button>
-      </form>
+      <div className="auth-shell">
+        <aside className="auth-hero" aria-label="Giới thiệu ứng dụng">
+          <div className="auth-brand-pill">Z</div>
+          <p className="auth-kicker">Workspace messaging</p>
+          <h1>Giao tiếp nhanh, an toàn và rõ ràng.</h1>
+          <p className="auth-hero-copy">
+            Kết nối với bạn bè, quản lý nhóm và giữ mọi cuộc trò chuyện trong một không gian hiện đại, rõ ràng và tập trung.
+          </p>
+          <div className="auth-hero-grid">
+            <div>
+              <strong>2.4k+</strong>
+              <span>tin nhắn hôm nay</span>
+            </div>
+            <div>
+              <strong>99.9%</strong>
+              <span>tỉ lệ kết nối</span>
+            </div>
+            <div>
+              <strong>24/7</strong>
+              <span>AI hỗ trợ</span>
+            </div>
+          </div>
+        </aside>
+
+        <section className="auth-panel-wrap">
+          <form className="auth-panel" onSubmit={(event) => { event.preventDefault(); onSubmit(form) }}>
+            <div className="auth-mark">Z</div>
+            <p className="auth-kicker">Zalo Mini</p>
+            <h2>{mode === 'login' ? 'Chào mừng trở lại' : 'Tạo tài khoản mới'}</h2>
+            <p className="auth-subtitle">{mode === 'login' ? 'Đăng nhập để tiếp tục cuộc trò chuyện.' : 'Đăng ký để bắt đầu trò chuyện an toàn.'}</p>
+            <label>Username<input value={form.username} onChange={(event) => update('username', event.target.value)} autoComplete="username" required minLength={3} maxLength={50} /></label>
+            <label>Mật khẩu<input type="password" value={form.password} onChange={(event) => update('password', event.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required minLength={8} /></label>
+            {mode === 'register' && <label>Xác nhận mật khẩu<input type="password" value={form.confirm_password} onChange={(event) => update('confirm_password', event.target.value)} autoComplete="new-password" required minLength={8} /></label>}
+            {error && <p className="auth-error" role="alert">{error}</p>}
+            <button className="auth-submit" type="submit" disabled={loading}>{loading ? 'Đang xử lý...' : mode === 'login' ? 'Đăng nhập' : 'Đăng ký'}</button>
+            <button className="auth-switch" type="button" onClick={() => onModeChange(mode === 'login' ? 'register' : 'login')}>
+              {mode === 'login' ? 'Chưa có tài khoản? Đăng ký' : 'Đã có tài khoản? Đăng nhập'}
+            </button>
+          </form>
+        </section>
+      </div>
     </main>
   )
 }

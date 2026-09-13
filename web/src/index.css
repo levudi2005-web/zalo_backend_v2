@@ -1,22 +1,22 @@
 :root {
-  --color-primary: #6cae2f;
-  --color-primary-hover: #5f9f2b;
-  --color-primary-strong: #3f7c14;
-  --color-primary-soft: #edf7e1;
-  --color-background: #eef2ec;
-  --color-background-alt: #f7f5f0;
+  --color-primary: #6fae3d;
+  --color-primary-hover: #5d9a34;
+  --color-primary-strong: #2f5e1b;
+  --color-primary-soft: #edf9e7;
+  --color-background: #edf2ec;
+  --color-background-alt: #f7f9f6;
   --color-surface: #ffffff;
-  --color-surface-soft: #fbfaf7;
-  --color-surface-muted: #f4f7f2;
-  --color-border: rgba(20, 26, 22, 0.08);
-  --color-border-strong: rgba(20, 26, 22, 0.14);
-  --color-text: #171d1a;
-  --color-text-secondary: #39463e;
-  --color-text-muted: #69766d;
-  --color-success: #2f9d61;
-  --color-danger: #d55d52;
-  --color-warning: #d89b3c;
-  --color-shadow-sm: rgba(17, 23, 20, 0.06);
+  --color-surface-soft: #f5f7f4;
+  --color-surface-muted: #eef2ee;
+  --color-border: rgba(15, 24, 18, 0.08);
+  --color-border-strong: rgba(15, 24, 18, 0.14);
+  --color-text: #131d17;
+  --color-text-secondary: #2e3c35;
+  --color-text-muted: #64756b;
+  --color-success: #2c9c62;
+  --color-danger: #dc5b52;
+  --color-warning: #d99a3c;
+  --color-shadow-sm: rgba(17, 23, 20, 0.05);
   --color-shadow-md: rgba(17, 23, 20, 0.08);
   --color-shadow-lg: rgba(17, 23, 20, 0.12);
 
@@ -24,7 +24,7 @@
   --bg-secondary: var(--color-background-alt);
   --bg-surface: var(--color-surface);
   --bg-surface-soft: var(--color-surface-soft);
-  --bg-hover: #edf2ea;
+  --bg-hover: #edf3ee;
   --bg-active: var(--color-primary-soft);
 
   --text-primary: var(--color-text);
@@ -42,7 +42,7 @@
 
   --shadow-sm: 0 8px 22px var(--color-shadow-sm);
   --shadow-md: 0 14px 28px var(--color-shadow-md);
-  --shadow-lg: 0 28px 60px var(--color-shadow-lg);
+  --shadow-lg: 0 32px 64px var(--color-shadow-lg);
 
   --radius-xs: 8px;
   --radius-sm: 12px;
@@ -68,14 +68,14 @@
   --space-8: 32px;
 
   --font-ui: Inter, "Segoe UI", Arial, sans-serif;
-  --transition: 180ms cubic-bezier(.2,.8,.2,1);
-  --transition-fast: 120ms cubic-bezier(.2,.8,.2,1);
+  --transition-fast: 150ms cubic-bezier(.2,.8,.2,1);
+  --transition: 220ms cubic-bezier(.2,.8,.2,1);
   --breakpoint-md: 1024px;
   --breakpoint-sm: 768px;
 
   font-family: var(--font-ui);
   color: var(--text-primary);
-  background: linear-gradient(180deg, #f2f6ee 0%, #eff1eb 100%);
+  background: linear-gradient(180deg, #f4f7f3 0%, #eef2ec 100%);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
