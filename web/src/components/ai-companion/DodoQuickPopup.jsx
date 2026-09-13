@@ -20,6 +20,7 @@ export function DodoQuickPopup({
   isOpen,
   messages,
   processing,
+  statusText = '',
   error,
   selectedText = '',
   anchor = { x: 86, y: 82 },
@@ -155,7 +156,7 @@ export function DodoQuickPopup({
           </div>
           <div>
             <strong>{mode === 'menu' ? 'Dodo' : QUICK_ACTIONS.find((item) => item.id === mode)?.label}</strong>
-            <span>{processing ? 'Đang nghĩ...' : mode === 'menu' ? 'Luôn ở đây bên bạn' : 'Dodo nghe nè'}</span>
+            <span>{processing ? statusText || 'Đang nghĩ...' : mode === 'menu' ? 'Luôn ở đây bên bạn' : 'Dodo nghe nè'}</span>
           </div>
         </div>
         <button type="button" className="dodo-quick-close" onClick={onClose} aria-label="Đóng Dodo">
@@ -181,7 +182,7 @@ export function DodoQuickPopup({
         {processing && (
           <div className="dodo-quick-message assistant is-thinking">
             <span>Dodo</span>
-            <p><i /><i /><i /></p>
+            <p>{statusText || 'Đang kết nối...'}</p>
           </div>
         )}
 

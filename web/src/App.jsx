@@ -70,6 +70,7 @@ function App() {
   const [typingUsers, setTypingUsers] = useState([])
   const [conversationPresence, setConversationPresence] = useState([])
   const [aiProcessing, setAiProcessing] = useState(false)
+  const [aiStatus, setAiStatus] = useState('idle')
   const [error, setError] = useState('')
 
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -87,6 +88,7 @@ function App() {
   const [commandBoxOpen, setCommandBoxOpen] = useState(false)
   const [quickMessages, setQuickMessages] = useState([])
   const [quickPending, setQuickPending] = useState(0)
+  const [quickProcessingCount, setQuickProcessingCount] = useState(0)
   const [quickError, setQuickError] = useState('')
   const [quickAnchor, setQuickAnchor] = useState({ x: 86, y: 82 })
   const [quickSelectedText, setQuickSelectedText] = useState('')
@@ -123,6 +125,10 @@ function App() {
   const fileInputRef = useRef(null)
   const composerInputRef = useRef(null)
   const quickPendingRef = useRef(new Set())
+  const quickProcessingRef = useRef(new Set())
+  const aiPendingRef = useRef(new Set())
+  const aiWaitingTimerRef = useRef(null)
+  const aiErrorTimerRef = useRef(null)
   const pendingSendRef = useRef(new Set())
   const historyLimitRef = useRef(50)
   const hasMoreHistoryRef = useRef(true)
@@ -137,6 +143,15 @@ function App() {
   useEffect(() => {
     conversationIdRef.current = conversationId
   }, [conversationId])
+
+  const clearAiStatusTimers = () => {
+    if (aiWaitingTimerRef.current) window.clearTimeout(aiWaitingTimerRef.current)
+    if (aiErrorTimerRef.current) window.clearTimeout(aiErrorTimerRef.current)
+    aiWaitingTimerRef.current = null
+    aiErrorTimerRef.current = null
+  }
+
+  const aiPendingKey = (conversation, messageId) => `${conversation}:${messageId}`
 
   useEffect(() => {
     const restoreSession = async () => {
@@ -207,6 +222,11 @@ function App() {
       setConversationMembers([])
       setQuickMessages([])
       setQuickPending(0)
+      setQuickProcessingCount(0)
+      quickProcessingRef.current.clear()
+      aiPendingRef.current.clear()
+      clearAiStatusTimers()
+      setAiStatus('idle')
       setSearch('')
       setSearchResults(null)
       setActiveModule('chat')
@@ -773,6 +793,11 @@ function App() {
        */
       socket.on('ai_processing', (data) => {
         console.log('AI đang xử lý:', data)
+        const key = aiPendingKey(data?.conversation_id, data?.message_id)
+        if (aiPendingRef.current.has(key)) {
+          clearAiStatusTimers()
+          setAiStatus('processing')
+        }
         setAiProcessing(true)
       })
     
@@ -790,11 +815,24 @@ function App() {
           upsertMessage(normalized)
           console.log('[AI TRACE] message added:', normalized)
         }
+        const key = aiPendingKey(data?.conversation_id, data?.message_id)
+        if (aiPendingRef.current.has(key)) {
+          aiPendingRef.current.delete(key)
+          clearAiStatusTimers()
+          if (data?.error) {
+            setAiStatus('error')
+            aiErrorTimerRef.current = window.setTimeout(() => setAiStatus('idle'), 6000)
+          } else {
+            setAiStatus('idle')
+          }
+        }
         setAiProcessing(false)
       })
     
       socket.on('dodo_quick_processing', (data) => {
         if (!quickPendingRef.current.has(data?.request_id)) return
+        quickProcessingRef.current.add(data.request_id)
+        setQuickProcessingCount(quickProcessingRef.current.size)
         setQuickError('')
       })
     
@@ -807,7 +845,9 @@ function App() {
           timing: data?.timing || null,
         })
         quickPendingRef.current.delete(requestId)
+        quickProcessingRef.current.delete(requestId)
         setQuickPending(quickPendingRef.current.size)
+        setQuickProcessingCount(quickProcessingRef.current.size)
         if (data.error) {
           setQuickError('Ơ, Dodo bị khựng một chút 😅 Thử lại nha.')
           return
@@ -933,6 +973,12 @@ function App() {
 
     const attachment = retryMessage?.attachment || selectedAttachment
     if (!text && !attachment) return
+      const selectedConversation = conversations.find((item) => Number(item.id) === Number(conversationId))
+      const aiRequest = !attachment && (
+        /@ai\b/i.test(text) ||
+        selectedConversation?.conversation_type === 'ai' ||
+        selectedConversation?.name === 'Dodo'
+      )
     stopTyping()
 
     const clientMessageId = retryMessage?.client_message_id ||
@@ -968,6 +1014,10 @@ function App() {
       setEmojiOpen(false)
       setAttachOpen(false)
       setCommandBoxOpen(false)
+      if (aiRequest) {
+        clearAiStatusTimers()
+        setAiStatus('connecting')
+      }
 
       /*
        * Gửi lên Chat Server
@@ -1009,6 +1059,14 @@ function App() {
         status: 'sent',
         client_message_id: clientMessageId,
       })
+      if (aiRequest) {
+        const key = aiPendingKey(conversationId, data?.id || clientMessageId)
+        aiPendingRef.current.add(key)
+        setAiStatus('waiting')
+        aiWaitingTimerRef.current = window.setTimeout(() => {
+          if (aiPendingRef.current.size > 0) setAiStatus('starting')
+        }, 8000)
+      }
       setReplyingTo(null)
       setSelectedAttachment(null)
 
@@ -1025,6 +1083,11 @@ function App() {
         err.message ||
           'Gửi tin nhắn thất bại',
       )
+      if (aiRequest) {
+        clearAiStatusTimers()
+        setAiStatus('error')
+        aiErrorTimerRef.current = window.setTimeout(() => setAiStatus('idle'), 6000)
+      }
     } finally {
       pendingSendRef.current.delete(clientMessageId)
     }
@@ -1537,8 +1600,10 @@ function App() {
     } catch (err) {
       console.error(err)
       quickPendingRef.current.delete(requestId)
+      quickProcessingRef.current.delete(requestId)
       setQuickPending(quickPendingRef.current.size)
-      setQuickError('Ơ, Dodo bị khựng một chút 😅 Thử lại nha.')
+      setQuickProcessingCount(quickProcessingRef.current.size)
+      setQuickError('⚠️ AI chưa thể phản hồi lúc này. Bạn có thể thử gửi lại sau.')
     }
   }
 
@@ -1704,6 +1769,11 @@ function App() {
         }}
         messages={quickMessages}
         processing={quickPending > 0}
+        statusText={quickProcessingCount > 0
+          ? '🤖 AI đang xử lý...'
+          : quickPending > 0
+            ? '🤖 AI đang kết nối...'
+            : ''}
         error={quickError}
         anchor={quickAnchor}
         selectedText={quickSelectedText}
@@ -2357,6 +2427,16 @@ function App() {
             )}
 
             {/* AI đang xử lý */}
+
+            {!chatSearch.trim() && aiStatus !== 'idle' && (
+              <div className={`ai-status-notice ${aiStatus === 'error' ? 'is-error' : ''}`} role="status" aria-live="polite">
+                {aiStatus === 'connecting' && '🤖 AI đang kết nối...'}
+                {aiStatus === 'waiting' && '⏳ Hệ thống đang kết nối với AI, vui lòng chờ một chút...'}
+                {aiStatus === 'starting' && '🔄 Hệ thống AI đang khởi động lại. Thời gian phản hồi có thể lâu hơn bình thường.'}
+                {aiStatus === 'processing' && '🤖 AI đang xử lý...'}
+                {aiStatus === 'error' && '⚠️ AI chưa thể phản hồi lúc này. Bạn có thể thử gửi lại sau.'}
+              </div>
+            )}
 
             {!chatSearch.trim() &&
               aiProcessing && (

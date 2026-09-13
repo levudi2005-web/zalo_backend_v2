@@ -33,6 +33,26 @@ button {
   background: var(--bg-primary);
 }
 
+.ai-status-notice {
+  width: fit-content;
+  max-width: min(520px, 90%);
+  margin: 10px auto 14px;
+  padding: 9px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.ai-status-notice.is-error {
+  border-color: #f0b7b2;
+  color: #9f3028;
+}
+
 .auth-panel {
   width: min(420px, 100%);
   padding: 36px;
