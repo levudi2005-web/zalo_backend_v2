@@ -13,17 +13,19 @@ const server = http.createServer(app);
 app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json({ limit: '2mb' }));
 
+const dbPort = Number(process.env.DB_PORT || 3306);
+const dbSsl = process.env.DB_SSL === 'true' || dbPort === 4000;
 const db = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME || 'chat_test',
-  port: Number(process.env.DB_PORT || 3306),
+  port: dbPort,
   waitForConnections: true,
   connectionLimit: Number(process.env.DB_POOL_SIZE || 10),
   queueLimit: 0,
   charset: 'utf8mb4',
-  ...(process.env.DB_SSL === 'true' ? { ssl: { minVersion: 'TLSv1.2' } } : {})
+  ...(dbSsl ? { ssl: { minVersion: 'TLSv1.2' } } : {})
 });
 
 const redis = createClient({ url: process.env.REDIS_URL });
