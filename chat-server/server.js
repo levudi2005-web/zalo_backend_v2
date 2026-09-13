@@ -237,9 +237,31 @@ io.use(async (socket, next) => {
   }
 });
 
+async function ensureAIConversationMembership(userId) {
+  await db.query(
+    'INSERT INTO conversation_members (conversation_id, user_id, role) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE left_at = NULL, role = VALUES(role)',
+    [AI_CONVERSATION_ID, userId, 'member'],
+  );
+}
+
 async function ensureMembership(userId, conversationId) {
-  const [rows] = await db.query('SELECT id, role FROM conversation_members WHERE conversation_id=? AND user_id=? AND left_at IS NULL LIMIT 1', [conversationId, userId]);
-  return rows[0] || null;
+  const targetConversationId = Number(conversationId);
+  const [rows] = await db.query(
+    'SELECT id, role FROM conversation_members WHERE conversation_id=? AND user_id=? AND left_at IS NULL LIMIT 1',
+    [targetConversationId, userId],
+  );
+  if (rows[0]) return rows[0];
+
+  if (targetConversationId === AI_CONVERSATION_ID) {
+    await ensureAIConversationMembership(userId);
+    const [freshRows] = await db.query(
+      'SELECT id, role FROM conversation_members WHERE conversation_id=? AND user_id=? AND left_at IS NULL LIMIT 1',
+      [targetConversationId, userId],
+    );
+    return freshRows[0] || null;
+  }
+
+  return null;
 }
 
 async function getOrCreatePrivateConversation(userA, userB) {
@@ -793,6 +815,7 @@ app.get('/api/users/by-friend-code/:code', requireAuth, async (req, res) => {
 
 app.post('/api/bootstrap', requireAuth, async (req,res) => {
   try {
+    await ensureAIConversationMembership(req.user.id);
     const conversationId = Number(req.body?.conversation_id);
     if (conversationId) {
       const member = await ensureMembership(req.user.id, conversationId);

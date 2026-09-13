@@ -757,12 +757,13 @@ button {
 .ai-chat-panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px 12px 10px;
-  margin-bottom: 10px;
+  gap: 8px;
+  padding: 12px 14px;
+  margin: 10px 0 12px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   background: linear-gradient(180deg, var(--bg-surface), var(--bg-hover));
+  box-shadow: var(--shadow-sm);
 }
 
 .ai-chat-panel-head {
@@ -772,11 +773,14 @@ button {
 }
 
 .ai-chat-panel-avatar {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: var(--green-soft);
   overflow: hidden;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-subtle);
 }
 
 .ai-chat-panel-avatar img {
@@ -802,7 +806,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 10px 0;
+  padding: 8px 2px 6px;
 }
 
 .ai-chat-panel-empty strong {
@@ -822,18 +826,26 @@ button {
 }
 
 .ai-chat-quick-action {
-  padding: 7px 10px;
+  padding: 7px 12px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--border-subtle);
   background: var(--bg-surface);
   color: var(--text-primary);
   font-size: 0.72rem;
   cursor: pointer;
+  transition: background var(--transition), color var(--transition), transform var(--transition), border-color var(--transition);
 }
 
-.ai-chat-quick-action:hover {
+.ai-chat-quick-action:hover,
+.ai-chat-quick-action:focus {
   background: var(--green-soft);
   color: var(--green-dark);
+  border-color: rgba(91, 159, 31, 0.5);
+  transform: translateY(-1px);
+}
+
+.ai-chat-panel-compact {
+  min-height: auto;
 }
 
 .chat-avatar {
