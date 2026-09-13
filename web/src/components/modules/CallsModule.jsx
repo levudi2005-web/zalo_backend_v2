@@ -33,8 +33,31 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
       const response = await fetch(`${apiUrl}/api/friendships`, { credentials: 'include' })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(data.error || 'Không thể tải bạn bè')
-      const accepted = Array.isArray(data.friendships) ? data.friendships.filter((friend) => friend.status === 'accepted') : []
-      setFriends(accepted.filter((friend) => Number(friend.user_id) !== Number(currentUserId) && Number(friend.friend_id) !== Number(currentUserId)))
+
+      const accepted = Array.isArray(data.friendships)
+        ? data.friendships.filter((friend) => friend.status === 'accepted')
+        : []
+
+      const mappedFriends = accepted
+        .map((friend) => {
+          const otherUserId = Number(friend.user_id) === Number(currentUserId)
+            ? Number(friend.friend_id)
+            : Number(friend.user_id)
+
+          return {
+            ...friend,
+            id: friend.id,
+            user_id: Number(friend.user_id),
+            friend_id: Number(friend.friend_id),
+            otherUserId,
+            username: friend.friend_username || friend.username || 'Unknown',
+            full_name: friend.friend_full_name || friend.full_name || friend.friend_username || 'Unknown',
+            avatar: friend.avatar || null,
+          }
+        })
+        .filter((friend) => Number(friend.otherUserId) > 0 && Number(friend.otherUserId) !== Number(currentUserId))
+
+      setFriends(mappedFriends)
     } catch (loadError) {
       setError(loadError.message || 'Không thể tải danh sách bạn bè.')
     }
