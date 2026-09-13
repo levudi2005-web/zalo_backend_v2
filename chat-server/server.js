@@ -2587,6 +2587,9 @@ io.on('connection', socket => {
       if (!targetUserId || targetUserId === socket.user.id) {
         return socket.emit('call:error', { message: 'Không thể gọi chính mình hoặc thiếu người nhận.' });
       }
+      if (userCallMap.has(socket.user.id) || userCallMap.has(targetUserId)) {
+        return socket.emit('call:error', { message: 'Một trong hai người đang có cuộc gọi đang hoạt động.' });
+      }
       if (!socketsByUser.has(targetUserId)) {
         return socket.emit('call:error', { message: 'Người nhận hiện không online.' });
       }
@@ -2628,19 +2631,19 @@ io.on('connection', socket => {
       const session = callSessions.get(callId);
       if (!session) return socket.emit('call:error', { message: 'Cuộc gọi không tồn tại.' });
       if (!session.participants.has(socket.user.id)) return socket.emit('call:error', { message: 'Bạn không thuộc cuộc gọi này.' });
+      if (socket.user.id === session.initiatorId) return socket.emit('call:error', { message: 'Bạn không thể chấp nhận cuộc gọi của chính mình.' });
+
       const payload = {
         callId,
-        fromUserId: socket.user.id,
-        toUserId: session.initiatorId,
+        fromUserId: session.initiatorId,
+        toUserId: socket.user.id,
         accepted: true,
         callType: session.callType,
         timestamp: Date.now(),
       };
-      for (const participantId of session.participants) {
-        const socketIds = socketsByUser.get(participantId) || new Set();
-        for (const socketId of socketIds) {
-          io.to(socketId).emit('call:accept', payload);
-        }
+
+      for (const socketId of socketsByUser.get(session.initiatorId) || new Set()) {
+        io.to(socketId).emit('call:accept', payload);
       }
     } catch (error) {
       console.error('Socket call:accept error:', error);
@@ -2675,6 +2678,7 @@ io.on('connection', socket => {
       const targetUserId = Number(data?.targetUserId);
       const session = callSessions.get(callId);
       if (!session || !session.participants.has(socket.user.id)) return socket.emit('call:error', { message: 'Không có quyền gửi offer.' });
+      if (!session.participants.has(targetUserId) || targetUserId === socket.user.id) return socket.emit('call:error', { message: 'Người nhận offer không hợp lệ.' });
       for (const socketId of socketsByUser.get(targetUserId) || new Set()) {
         io.to(socketId).emit('call:offer', {
           callId,
@@ -2697,6 +2701,7 @@ io.on('connection', socket => {
       const targetUserId = Number(data?.targetUserId);
       const session = callSessions.get(callId);
       if (!session || !session.participants.has(socket.user.id)) return socket.emit('call:error', { message: 'Không có quyền gửi answer.' });
+      if (!session.participants.has(targetUserId) || targetUserId === socket.user.id) return socket.emit('call:error', { message: 'Người nhận answer không hợp lệ.' });
       for (const socketId of socketsByUser.get(targetUserId) || new Set()) {
         io.to(socketId).emit('call:answer', {
           callId,
@@ -2718,6 +2723,7 @@ io.on('connection', socket => {
       const targetUserId = Number(data?.targetUserId);
       const session = callSessions.get(callId);
       if (!session || !session.participants.has(socket.user.id)) return;
+      if (!session.participants.has(targetUserId) || targetUserId === socket.user.id) return;
       for (const socketId of socketsByUser.get(targetUserId) || new Set()) {
         io.to(socketId).emit('call:ice-candidate', {
           callId,

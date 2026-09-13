@@ -25,6 +25,7 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
   const remoteVideoRef = useRef(null)
   const mediaStreamRef = useRef(null)
   const callIsInitiatorRef = useRef(false)
+  const pendingIceCandidatesRef = useRef([])
 
   const loadFriends = async () => {
     if (!apiUrl) return
@@ -47,11 +48,13 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
     if (!socket) return undefined
 
     const handleIncoming = (payload) => {
+      pendingIceCandidatesRef.current = pendingIceCandidatesRef.current.filter((item) => item.callId === payload.callId)
       setCallState({ status: 'ringing', callType: payload.callType || 'audio', remoteUserId: Number(payload.fromUserId), callId: payload.callId, incoming: true })
       setError('')
     }
 
     const handleStarted = (payload) => {
+      pendingIceCandidatesRef.current = pendingIceCandidatesRef.current.filter((item) => item.callId === payload.callId)
       setCallState({ status: 'connecting', callType: payload.callType || 'audio', remoteUserId: Number(payload.targetUserId), callId: payload.callId, incoming: false })
       setError('')
     }
@@ -83,6 +86,7 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
         if (!payload?.offer) return
         const peer = createPeerConnection(Number(payload.fromUserId))
         await peer.setRemoteDescription(new RTCSessionDescription(payload.offer))
+        await flushPendingIceCandidates(peer, payload.callId)
         const answer = await peer.createAnswer()
         await peer.setLocalDescription(answer)
         socket.emit('call:answer', { callId: payload.callId, targetUserId: Number(payload.fromUserId), answer })
@@ -93,17 +97,60 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
 
     const handleAnswer = async (payload) => {
       if (!peerRef.current || !payload?.answer) return
-      await peerRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer))
+      try {
+        await peerRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer))
+        await flushPendingIceCandidates(peerRef.current, payload.callId)
+      } catch (answerError) {
+        setError('Không thể xác nhận cuộc gọi.')
+      }
     }
 
-    const handleCandidate = (payload) => {
-      if (!peerRef.current || !payload?.candidate) return
-      peerRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(() => undefined)
+    const handleCandidate = async (payload) => {
+      if (!payload?.candidate) return
+      const targetCallId = payload.callId || callState.callId
+      const peer = peerRef.current
+
+      if (!peer || !peer.remoteDescription) {
+        const alreadyQueued = pendingIceCandidatesRef.current.some(
+          (item) =>
+            item.callId === targetCallId &&
+            item.candidate?.candidate === payload.candidate?.candidate &&
+            item.candidate?.sdpMid === payload.candidate?.sdpMid &&
+            item.candidate?.sdpMLineIndex === payload.candidate?.sdpMLineIndex,
+        )
+
+        if (!alreadyQueued) {
+          pendingIceCandidatesRef.current.push({
+            callId: targetCallId,
+            candidate: payload.candidate,
+          })
+        }
+        return
+      }
+
+      try {
+        await peer.addIceCandidate(new RTCIceCandidate(payload.candidate))
+      } catch (candidateError) {
+        const alreadyQueued = pendingIceCandidatesRef.current.some(
+          (item) =>
+            item.callId === targetCallId &&
+            item.candidate?.candidate === payload.candidate?.candidate &&
+            item.candidate?.sdpMid === payload.candidate?.sdpMid &&
+            item.candidate?.sdpMLineIndex === payload.candidate?.sdpMLineIndex,
+        )
+
+        if (!alreadyQueued) {
+          pendingIceCandidatesRef.current.push({
+            callId: targetCallId,
+            candidate: payload.candidate,
+          })
+        }
+      }
     }
 
     const handleError = (payload) => {
-      setError(payload?.message || 'Không thể thực hiện cuộc gọi.')
-      resetCallState('')
+      const message = payload?.message || 'Không thể thực hiện cuộc gọi.'
+      resetCallState(message, { preserveError: true })
     }
 
     socket.on('call:incoming', handleIncoming)
@@ -129,8 +176,30 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
     }
   }, [socket])
 
-  const resetCallState = (nextError = '') => {
-    setError(nextError)
+  const flushPendingIceCandidates = async (peer, callId = callState.callId) => {
+    if (!peer || !pendingIceCandidatesRef.current.length) return
+    const queuedForCall = pendingIceCandidatesRef.current.filter((entry) => entry.callId === callId)
+    if (!queuedForCall.length) return
+
+    const remaining = pendingIceCandidatesRef.current.filter((entry) => entry.callId !== callId)
+    pendingIceCandidatesRef.current = remaining
+
+    for (const entry of queuedForCall) {
+      try {
+        if (!entry?.candidate) continue
+        await peer.addIceCandidate(new RTCIceCandidate(entry.candidate))
+      } catch (candidateError) {
+        console.warn('Failed to flush queued ICE candidate', candidateError)
+      }
+    }
+  }
+
+  const resetCallState = (nextError = '', options = {}) => {
+    const preserveError = typeof nextError === 'object' ? Boolean(nextError.preserveError) : Boolean(options?.preserveError)
+    const message = typeof nextError === 'string' ? nextError : options?.message || ''
+
+    setError(preserveError ? message : '')
+    pendingIceCandidatesRef.current = []
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop())
       mediaStreamRef.current = null
