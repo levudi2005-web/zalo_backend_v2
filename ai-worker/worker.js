@@ -7,16 +7,18 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 // =========================
 // DATABASE
 // =========================
+const dbPort = Number(process.env.DB_PORT || 3306);
+const dbSsl = process.env.DB_SSL === 'true' || dbPort === 4000;
 const db = mysql.createPool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME || 'chat_test',
-    port: Number(process.env.DB_PORT || 3306),
+    port: dbPort,
     waitForConnections: true,
     connectionLimit: 5,
     charset: 'utf8mb4',
-    ...(process.env.DB_SSL === 'true'
+    ...(dbSsl
         ? { ssl: { minVersion: 'TLSv1.2' } }
         : {})
 });
@@ -25,7 +27,10 @@ const db = mysql.createPool({
 // REDIS
 // =========================
 const redis = createClient({
-    url: process.env.REDIS_URL
+    url: process.env.REDIS_URL,
+    socket: {
+        reconnectStrategy: retries => Math.min(retries * 200, 5000),
+    },
 });
 
 redis.on('error', (err) => {
@@ -422,18 +427,6 @@ async function processJob(job) {
         // TÌM AI CONVERSATION
         // -------------------------
 
-        console.log('DEBUG job.user_id =', job.user_id);
-
-const [userCheck] = await db.query(
-    `
-    SELECT id, username
-    FROM users
-    WHERE id = ?
-    `,
-    [job.user_id]
-);
-
-console.log('DEBUG user found =', userCheck);
         const [conversationRows] = await db.query(
             `
             SELECT id
@@ -657,6 +650,11 @@ async function main() {
                         '[AI WORKER] Invalid job JSON:',
                         error.message
                     );
+                    continue;
+                }
+
+                if (!job || typeof job !== 'object' || Array.isArray(job)) {
+                    console.error('[AI WORKER] Invalid job: expected an object');
                     continue;
                 }
 
