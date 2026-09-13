@@ -1737,7 +1737,7 @@ function App() {
     friends: <FriendsModule apiUrl={API_URL} userId={authUser?.id} onOpenChat={(id) => { if (id) selectConversation(id) }} />,
     stories: <StoriesModule apiUrl={API_URL} />,
     notifications: <NotificationsModule apiUrl={API_URL} />,
-    calls: <CallsModule />,
+    calls: <CallsModule apiUrl={API_URL} currentUserId={authUser?.id} socket={socketRef.current} />,
     settings: <SettingsModule apiUrl={API_URL} onLogout={() => setLogoutConfirmOpen(true)} />,
     profile: <ProfileModule apiUrl={API_URL} onLogout={() => setLogoutConfirmOpen(true)} />,
   }

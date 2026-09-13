@@ -38,6 +38,8 @@ const FRIEND_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 const socketsByUser = new Map();
 const AI_ENQUEUE_DEDUPE = new Map();
+const callSessions = new Map();
+const userCallMap = new Map();
 const SESSION_COOKIE = 'zalo_session';
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_DAYS || 30) * 24 * 60 * 60 * 1000;
 const configuredOrigins = String(process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:4173')
@@ -2576,11 +2578,199 @@ io.on('connection', socket => {
     if(!cid || !await ensureMembership(socket.user.id,cid)) return;
     socket.to(room(cid)).emit('typing',{conversation_id:cid,user_id:socket.user.id,username:socket.user.username,typing:Boolean(data.typing)});
   });
+
+  socket.on('call:start', async data => {
+    try {
+      if (!socket.user) return socket.emit('call:error', { message: 'Chưa xác thực' });
+      const targetUserId = Number(data?.targetUserId);
+      const callType = data?.callType === 'video' ? 'video' : 'audio';
+      if (!targetUserId || targetUserId === socket.user.id) {
+        return socket.emit('call:error', { message: 'Không thể gọi chính mình hoặc thiếu người nhận.' });
+      }
+      if (!socketsByUser.has(targetUserId)) {
+        return socket.emit('call:error', { message: 'Người nhận hiện không online.' });
+      }
+      const callId = `call-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const session = { callId, callType, initiatorId: socket.user.id, participants: new Set([socket.user.id, targetUserId]), createdAt: Date.now() };
+      callSessions.set(callId, session);
+      userCallMap.set(socket.user.id, callId);
+      userCallMap.set(targetUserId, callId);
+
+      for (const participantId of session.participants) {
+        const socketIds = socketsByUser.get(participantId) || new Set();
+        for (const socketId of socketIds) {
+          io.sockets.sockets.get(socketId)?.join(callId);
+        }
+      }
+
+      const payload = {
+        callId,
+        fromUserId: socket.user.id,
+        fromUsername: socket.user.username,
+        callType,
+        createdAt: Date.now(),
+      };
+
+      for (const socketId of socketsByUser.get(targetUserId) || new Set()) {
+        io.to(socketId).emit('call:incoming', payload);
+      }
+      socket.emit('call:started', { callId, targetUserId, callType });
+    } catch (error) {
+      console.error('Socket call:start error:', error);
+      socket.emit('call:error', { message: 'Không thể bắt đầu cuộc gọi.' });
+    }
+  });
+
+  socket.on('call:accept', async data => {
+    try {
+      if (!socket.user) return socket.emit('call:error', { message: 'Chưa xác thực' });
+      const callId = String(data?.callId || '');
+      const session = callSessions.get(callId);
+      if (!session) return socket.emit('call:error', { message: 'Cuộc gọi không tồn tại.' });
+      if (!session.participants.has(socket.user.id)) return socket.emit('call:error', { message: 'Bạn không thuộc cuộc gọi này.' });
+      const payload = {
+        callId,
+        fromUserId: socket.user.id,
+        toUserId: session.initiatorId,
+        accepted: true,
+        callType: session.callType,
+        timestamp: Date.now(),
+      };
+      for (const participantId of session.participants) {
+        const socketIds = socketsByUser.get(participantId) || new Set();
+        for (const socketId of socketIds) {
+          io.to(socketId).emit('call:accept', payload);
+        }
+      }
+    } catch (error) {
+      console.error('Socket call:accept error:', error);
+      socket.emit('call:error', { message: 'Không thể chấp nhận cuộc gọi.' });
+    }
+  });
+
+  socket.on('call:reject', async data => {
+    try {
+      if (!socket.user) return socket.emit('call:error', { message: 'Chưa xác thực' });
+      const callId = String(data?.callId || '');
+      const session = callSessions.get(callId);
+      if (!session) return;
+      const payload = { callId, fromUserId: socket.user.id, rejected: true, reason: 'call_rejected', timestamp: Date.now() };
+      for (const participantId of session.participants) {
+        const socketIds = socketsByUser.get(participantId) || new Set();
+        for (const socketId of socketIds) {
+          io.to(socketId).emit('call:reject', payload);
+        }
+      }
+      callSessions.delete(callId);
+      for (const participantId of session.participants) userCallMap.delete(participantId);
+    } catch (error) {
+      console.error('Socket call:reject error:', error);
+    }
+  });
+
+  socket.on('call:offer', data => {
+    try {
+      if (!socket.user) return socket.emit('call:error', { message: 'Chưa xác thực' });
+      const callId = String(data?.callId || '');
+      const targetUserId = Number(data?.targetUserId);
+      const session = callSessions.get(callId);
+      if (!session || !session.participants.has(socket.user.id)) return socket.emit('call:error', { message: 'Không có quyền gửi offer.' });
+      for (const socketId of socketsByUser.get(targetUserId) || new Set()) {
+        io.to(socketId).emit('call:offer', {
+          callId,
+          fromUserId: socket.user.id,
+          toUserId: targetUserId,
+          offer: data?.offer,
+          callType: session.callType,
+        });
+      }
+    } catch (error) {
+      console.error('Socket call:offer error:', error);
+      socket.emit('call:error', { message: 'Không thể gửi offer.' });
+    }
+  });
+
+  socket.on('call:answer', data => {
+    try {
+      if (!socket.user) return socket.emit('call:error', { message: 'Chưa xác thực' });
+      const callId = String(data?.callId || '');
+      const targetUserId = Number(data?.targetUserId);
+      const session = callSessions.get(callId);
+      if (!session || !session.participants.has(socket.user.id)) return socket.emit('call:error', { message: 'Không có quyền gửi answer.' });
+      for (const socketId of socketsByUser.get(targetUserId) || new Set()) {
+        io.to(socketId).emit('call:answer', {
+          callId,
+          fromUserId: socket.user.id,
+          toUserId: targetUserId,
+          answer: data?.answer,
+        });
+      }
+    } catch (error) {
+      console.error('Socket call:answer error:', error);
+      socket.emit('call:error', { message: 'Không thể gửi answer.' });
+    }
+  });
+
+  socket.on('call:ice-candidate', data => {
+    try {
+      if (!socket.user) return socket.emit('call:error', { message: 'Chưa xác thực' });
+      const callId = String(data?.callId || '');
+      const targetUserId = Number(data?.targetUserId);
+      const session = callSessions.get(callId);
+      if (!session || !session.participants.has(socket.user.id)) return;
+      for (const socketId of socketsByUser.get(targetUserId) || new Set()) {
+        io.to(socketId).emit('call:ice-candidate', {
+          callId,
+          fromUserId: socket.user.id,
+          toUserId: targetUserId,
+          candidate: data?.candidate,
+        });
+      }
+    } catch (error) {
+      console.error('Socket call:ice-candidate error:', error);
+    }
+  });
+
+  socket.on('call:end', data => {
+    try {
+      if (!socket.user) return;
+      const callId = String(data?.callId || userCallMap.get(socket.user.id) || '');
+      const session = callSessions.get(callId);
+      if (!session) return;
+      const payload = { callId, endedBy: socket.user.id, endedAt: Date.now() };
+      for (const participantId of session.participants) {
+        const socketIds = socketsByUser.get(participantId) || new Set();
+        for (const socketId of socketIds) {
+          io.to(socketId).emit('call:end', payload);
+        }
+      }
+      callSessions.delete(callId);
+      for (const participantId of session.participants) userCallMap.delete(participantId);
+    } catch (error) {
+      console.error('Socket call:end error:', error);
+    }
+  });
+
   socket.on('disconnecting',()=>{
     socket._presenceRooms = Array.from(socket.rooms);
   });
   socket.on('disconnect', async ()=>{
     if(!socket.user) return;
+    const activeCallId = userCallMap.get(socket.user.id);
+    if (activeCallId) {
+      const session = callSessions.get(activeCallId);
+      if (session) {
+        const payload = { callId: activeCallId, endedBy: socket.user.id, endedAt: Date.now() };
+        for (const participantId of session.participants) {
+          const socketIds = socketsByUser.get(participantId) || new Set();
+          for (const socketId of socketIds) {
+            if (socketId !== socket.id) io.to(socketId).emit('call:end', payload);
+          }
+        }
+        callSessions.delete(activeCallId);
+        for (const participantId of session.participants) userCallMap.delete(participantId);
+      }
+    }
     const set=socketsByUser.get(socket.user.id);
     if(!set) return;
     set.delete(socket.id);
