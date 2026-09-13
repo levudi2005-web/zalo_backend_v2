@@ -42,7 +42,7 @@ const callSessions = new Map();
 const userCallMap = new Map();
 const SESSION_COOKIE = 'zalo_session';
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_DAYS || 30) * 24 * 60 * 60 * 1000;
-const configuredOrigins = String(process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:4173,http://localhost:4175')
+const configuredOrigins = String(process.env.CORS_ORIGIN || 'http://localhost:4175,http://127.0.0.1:4175,https://zalo-backend-v2.onrender.com')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);

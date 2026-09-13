@@ -48,6 +48,55 @@ function AuthScreen({ mode, onModeChange, onSubmit, error, loading }) {
   )
 }
 
+function AppBrand({ onClick }) {
+  return (
+    <button className="logo" type="button" onClick={onClick} aria-label="Mở danh sách trò chuyện">
+      Z
+    </button>
+  )
+}
+
+function ConversationListItem({ chat, selected, onSelect, dodoAssets, formatTime }) {
+  const isAi = chat.conversation_type === 'ai' || chat.name === 'Dodo'
+
+  return (
+    <button
+      key={chat.id}
+      type="button"
+      className={`chat-item ${selected ? 'selected' : ''}`}
+      onClick={() => onSelect(chat.id)}
+    >
+      <div className={`chat-avatar ${isAi ? 'ai' : ''}`}>
+        {chat.avatar_url ? (
+          <img className="dodo-avatar-image" src={chat.avatar_url} alt="" />
+        ) : isAi ? (
+          <img className="dodo-avatar-image" src={dodoAssets.base} alt="Dodo" />
+        ) : (
+          (chat.name || '?').slice(0, 1).toUpperCase()
+        )}
+
+        {Number(chat.unread_count) > 0 && <b className="chat-unread">{chat.unread_count}</b>}
+        {!chat.avatar_url && !isAi && <i />}
+      </div>
+
+      <div className="chat-content">
+        <div className="chat-top">
+          <strong>{chat.name}</strong>
+          <time>{chat.last_message_at ? formatTime(chat.last_message_at) : ''}</time>
+        </div>
+
+        <div className="chat-preview-row">
+          <span className="chat-preview-status">
+            {chat.is_pinned ? '📌' : ''}
+            {chat.is_muted ? '🔕' : ''}
+          </span>
+          <span className="chat-preview-text">{chat.last_message_text || 'Chưa có tin nhắn'}</span>
+        </div>
+      </div>
+    </button>
+  )
+}
+
 function App() {
   const [authUser, setAuthUser] = useState(null)
   const [conversationId, setConversationId] = useState(null)
@@ -148,7 +197,12 @@ function App() {
     const restoreSession = async () => {
       try {
         const response = await fetch(`${API_URL}/api/auth/me`, { credentials: 'include' })
-        if (!response.ok) return
+        if (!response.ok) {
+          setAuthUser(null)
+          setConversationId(null)
+          return
+        }
+
         const data = await response.json()
         setAuthUser(data.user)
         const bootstrap = await fetch(`${API_URL}/api/bootstrap`, {
@@ -160,6 +214,8 @@ function App() {
         if (bootstrap.ok) setConversationId((await bootstrap.json()).conversation_id || null)
       } catch (error) {
         console.error('Session restore failed', error)
+        setAuthUser(null)
+        setConversationId(null)
       } finally {
         setAuthReady(true)
       }
@@ -1813,42 +1869,30 @@ function App() {
         >
 
           <div className="sidebar-head">
-
-            <div className="title-row">
-
-              <h1>
-                Trò chuyện
-              </h1>
-
+            <div className="brand-compact-row">
+              <div className="sidebar-kicker">Workspace</div>
               <button
                 className="small-icon"
                 type="button"
-                onClick={() =>
-                  setSidebarOpen(false)
-                }
+                onClick={() => setSidebarOpen(false)}
                 aria-label="Thu gọn danh sách"
               >
                 ‹
               </button>
-
             </div>
 
-            <div
-              className={`search ${
-                sidebarSearchOpen
-                  ? 'open'
-                  : ''
-              }`}
-            >
+            <div className="title-row">
+              <div>
+                <h1>Trò chuyện</h1>
+                <span className="sidebar-subtitle">{filteredChats.length} cuộc hội thoại</span>
+              </div>
+              <AppBrand onClick={() => setSidebarOpen(false)} />
+            </div>
 
+            <div className={`search ${sidebarSearchOpen ? 'open' : ''}`}>
               <button
                 type="button"
-                onClick={() =>
-                  setSidebarSearchOpen(
-                    (value) =>
-                      !value,
-                  )
-                }
+                onClick={() => setSidebarSearchOpen((value) => !value)}
                 aria-label="Tìm kiếm"
               >
                 ⌕
@@ -1856,21 +1900,11 @@ function App() {
 
               <input
                 value={search}
-                onChange={(event) =>
-                  setSearch(
-                    event.target.value,
-                  )
-                }
-                onFocus={() =>
-                  setSidebarSearchOpen(
-                    true,
-                  )
-                }
+                onChange={(event) => setSearch(event.target.value)}
+                onFocus={() => setSidebarSearchOpen(true)}
                 placeholder="Tìm kiếm"
               />
-
             </div>
-
           </div>
 
           {searchResults && (
@@ -1883,73 +1917,16 @@ function App() {
           )}
 
           <div className="chat-list">
-
-            {filteredChats.map(
-              (chat, index) => (
-                <button
-                  key={chat.id}
-                  type="button"
-                  className={`chat-item ${
-                    Number(chat.id) === Number(conversationId)
-                      ? 'selected'
-                      : ''
-                  }`}
-                  onClick={() => selectConversation(chat.id)}
-                  style={{
-                    '--delay': `${index * 50}ms`,
-                  }}
-                >
-
-                  <div
-                    className={`chat-avatar ${
-                      chat.conversation_type === 'ai' || chat.name === 'Dodo'
-                        ? 'ai'
-                        : ''
-                    }`}
-                  >
-
-                    {chat.avatar_url ? (
-                      <img className="dodo-avatar-image" src={chat.avatar_url} alt="" />
-                    ) : chat.conversation_type === 'ai' || chat.name === 'Dodo' ? (
-                      <img
-                        className="dodo-avatar-image"
-                        src={dodoAssets.base}
-                        alt="Dodo"
-                      />
-                    ) : (chat.name || '?').slice(0, 1).toUpperCase()}
-
-                    {Number(chat.unread_count) > 0 && <b className="chat-unread">{chat.unread_count}</b>}
-                    {!chat.avatar_url && chat.conversation_type !== 'ai' && chat.name !== 'Dodo' && (
-                      <i />
-                    )}
-
-                  </div>
-
-                  <div className="chat-content">
-
-                    <div className="chat-top">
-
-                      <strong>
-                        {chat.name}
-                        {chat.is_pinned ? '  📌' : ''}
-                        {chat.is_muted ? '  🔕' : ''}
-                      </strong>
-
-                      <time>
-                        {chat.last_message_at ? formatTime(chat.last_message_at) : ''}
-                      </time>
-
-                    </div>
-
-                    <span>
-                        {chat.last_message_text || 'Chưa có tin nhắn'}
-                    </span>
-
-                  </div>
-
-                </button>
-              ),
-            )}
+            {filteredChats.map((chat) => (
+              <ConversationListItem
+                key={chat.id}
+                chat={chat}
+                selected={Number(chat.id) === Number(conversationId)}
+                onSelect={selectConversation}
+                dodoAssets={dodoAssets}
+                formatTime={formatTime}
+              />
+            ))}
 
             {filteredChats.length ===
               0 && (
@@ -2002,9 +1979,7 @@ function App() {
           {/* HEADER */}
 
           <header className="chat-header">
-
             <div className="header-person">
-
               <div className={`chat-avatar big ${conversationInfo?.type === 'direct' && conversationPresence.includes(conversationInfo.partnerId) ? 'online' : ''}`}>
                 {!conversationId ? (
                   <span aria-hidden="true">+</span>
@@ -2022,32 +1997,24 @@ function App() {
                 )}
               </div>
 
-              <div>
-
-                <h2>
+              <div className="header-meta">
+                <div className="header-identity">
+                  <h2>
                     {Number(conversationId) === Number(AI_CONVERSATION_ID)
-                    ? 'AI Assistant'
-                    : conversationId && conversationInfo?.type === 'direct'
-                      ? conversationInfo.partnerName
-                      : conversationId && conversationInfo?.type === 'group'
-                        ? conversationInfo.name
-                        : 'Chọn cuộc trò chuyện'}
-                </h2>
+                      ? 'AI Assistant'
+                      : conversationId && conversationInfo?.type === 'direct'
+                        ? conversationInfo.partnerName
+                        : conversationId && conversationInfo?.type === 'group'
+                          ? conversationInfo.name
+                          : 'Chọn cuộc trò chuyện'}
+                  </h2>
+                  <span className="header-chip">{connected ? 'Online' : 'Offline'}</span>
+                </div>
 
                 <span className="status">
-
-                  <i
-                    className={
-                      connected
-                        ? 'online'
-                        : ''
-                    }
-                  />
-
+                  <i className={connected ? 'online' : ''} />
                   {connected ? 'Kết nối realtime' : 'Mất kết nối realtime'}
-
                 </span>
-
                 <span className="presence-status">
                   {Number(conversationId) === Number(AI_CONVERSATION_ID)
                     ? (aiStatus === 'processing'
@@ -2065,9 +2032,7 @@ function App() {
                         ? `${conversationPresence.filter((id) => id !== Number(authUser.id)).length} người online`
                         : conversationId ? 'Không có người khác online' : 'Kết bạn để bắt đầu trò chuyện'}
                 </span>
-
               </div>
-
             </div>
 
             <div className="header-buttons">

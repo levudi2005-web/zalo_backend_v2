@@ -529,13 +529,28 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
   }
 
   const callList = Array.isArray(friends) ? friends : []
+  const remoteUserName = callState.remoteUserId
+    ? (callList.find((friend) => Number(friend.otherUserId) === Number(callState.remoteUserId))?.full_name
+      || callList.find((friend) => Number(friend.otherUserId) === Number(callState.remoteUserId))?.username
+      || `User ${callState.remoteUserId}`)
+    : 'Đang kết nối'
+
+  const statusLabel = callState.status === 'ringing'
+    ? 'Calling...'
+    : callState.status === 'connecting'
+      ? 'Connecting...'
+      : callState.status === 'connected'
+        ? 'Connected'
+        : callState.status === 'idle'
+          ? 'Sẵn sàng'
+          : callState.status
 
   return (
     <ModuleScaffold icon="◉" title="Cuộc gọi" description="Gọi thoại và video trực tiếp qua Socket.IO + WebRTC.">
       <div className="module-call-shell">
         <div className="module-call-header">
           <strong>Danh sách bạn bè</strong>
-          <span>{callState.status === 'idle' ? 'Sẵn sàng' : callState.status}</span>
+          <span>{statusLabel}</span>
         </div>
 
         {error && <div className="module-call-error">{error}</div>}
@@ -550,14 +565,16 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
             )}
             {callState.callType === 'audio' && (
               <div className="module-call-audio-panel">
-                <div className="module-call-avatar">{String(callState.remoteUserId || 'U').slice(0, 1).toUpperCase()}</div>
-                <strong>{callState.remoteUserId ? `User ${callState.remoteUserId}` : 'Đang kết nối'}</strong>
-                <span>{callState.status === 'connected' ? formatDuration(duration) : callState.status}</span>
+                <div className="module-call-avatar">{String(remoteUserName || 'U').slice(0, 1).toUpperCase()}</div>
+                <strong>{remoteUserName}</strong>
+                <span>{callState.status === 'connected' ? formatDuration(duration) : statusLabel}</span>
               </div>
             )}
             <div className="module-call-actions">
-              <button type="button" className="module-call-button" onClick={toggleMute}>{isMuted ? 'Mic off' : 'Mic on'}</button>
-              {callState.callType === 'video' && (
+              {!callState.incoming && callState.status !== 'ringing' && (
+                <button type="button" className="module-call-button" onClick={toggleMute}>{isMuted ? 'Mic off' : 'Mic on'}</button>
+              )}
+              {callState.callType === 'video' && callState.status !== 'ringing' && (
                 <button type="button" className="module-call-button" onClick={toggleCamera}>{isCameraOn ? 'Camera on' : 'Camera off'}</button>
               )}
               {callState.incoming ? (
