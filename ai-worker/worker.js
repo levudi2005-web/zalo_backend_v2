@@ -1,4 +1,5 @@
 const path = require('path');
+const http = require('http');
 const mysql = require('mysql2/promise');
 const axios = require('axios');
 const { createClient } = require('redis');
@@ -39,6 +40,24 @@ redis.on('error', (err) => {
 
 const QUEUE = process.env.AI_QUEUE_KEY || 'ai:jobs';
 const CHANNEL = process.env.CHAT_CHANNEL || 'chat:broadcast';
+
+function startHealthServer() {
+    const port = Number(process.env.PORT || 3000);
+    const server = http.createServer((request, response) => {
+        if (request.method === 'GET' && request.url === '/health') {
+            response.writeHead(200, { 'Content-Type': 'application/json' });
+            response.end(JSON.stringify({ ok: true }));
+            return;
+        }
+
+        response.writeHead(404, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ error: 'Not found' }));
+    });
+
+    server.listen(port, '0.0.0.0', () => {
+        console.log(`[AI WORKER] HTTP health server listening on port ${port}`);
+    });
+}
 
 const COMPANION_SYSTEM_PROMPT = `Bạn là một người bạn trò chuyện trong ứng dụng nhắn tin.
 
@@ -618,6 +637,8 @@ async function processJob(job) {
 // MAIN WORKER
 // =========================
 async function main() {
+    startHealthServer();
+
     if (!redis.isOpen) {
         await redis.connect();
     }
