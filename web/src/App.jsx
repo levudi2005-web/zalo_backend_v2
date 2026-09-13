@@ -174,14 +174,17 @@ function App() {
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(data.error || 'Không thể xác thực')
-      setAuthUser(data.user)
       const bootstrap = await fetch(`${API_URL}/api/bootstrap`, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}',
       })
-      if (!bootstrap.ok) throw new Error('Không thể khởi tạo phiên đăng nhập')
-      setConversationId((await bootstrap.json()).conversation_id || null)
+      const bootstrapData = await bootstrap.json().catch(() => ({}))
+      if (!bootstrap.ok) throw new Error(bootstrapData.error || 'Không thể khởi tạo phiên đăng nhập')
+      setAuthUser(data.user)
+      setConversationId(bootstrapData.conversation_id || null)
     } catch (error) {
-      setAuthError(error.message)
+      setAuthError(error instanceof TypeError
+        ? 'Không thể kết nối máy chủ. Vui lòng thử lại sau.'
+        : error.message || 'Không thể xác thực')
     } finally {
       setAuthLoading(false)
     }
