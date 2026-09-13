@@ -31,8 +31,12 @@ app.use(cors({
 
 async function requireAuth(req, res, next) {
   try {
+    const headers = {
+      cookie: req.headers.cookie || '',
+      authorization: req.headers.authorization || '',
+    };
     const response = await fetch(`${process.env.CHAT_SERVER_URL || 'http://localhost:3000'}/api/auth/me`, {
-      headers: { cookie: req.headers.cookie || '' },
+      headers,
     });
     if (!response.ok) return res.status(401).json({ error: 'Chưa đăng nhập' });
     req.user = await response.json();

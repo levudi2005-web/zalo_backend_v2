@@ -16,12 +16,7 @@ import './components/modules/module-planned.css'
 import './App.css'
 
 const API_URL = (import.meta.env.VITE_API_URL || 'https://zalo-backend-v2.onrender.com').replace(/\/$/, '')
-const MEDIA_URL = String(import.meta.env.VITE_MEDIA_URL || '').replace(/\/$/, '')
-const MEDIA_ACCEPTS = {
-  image: 'image/jpeg,image/png,image/webp,image/gif',
-  video: 'video/mp4,video/webm,video/quicktime',
-  file: '*/*',
-}
+const MEDIA_URL = String(import.meta.env.VITE_MEDIA_URL || 'https://zalo-media.onrender.com').replace(/\/$/, '')
 
 const emojis = ['😀', '😂', '😍', '👍', '🔥', '🎉', '😎', '❤️']
 
@@ -75,7 +70,6 @@ function App() {
   const [typingUsers, setTypingUsers] = useState([])
   const [conversationPresence, setConversationPresence] = useState([])
   const [aiProcessing, setAiProcessing] = useState(false)
-  const [aiStatus, setAiStatus] = useState('idle')
   const [error, setError] = useState('')
 
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -93,7 +87,6 @@ function App() {
   const [commandBoxOpen, setCommandBoxOpen] = useState(false)
   const [quickMessages, setQuickMessages] = useState([])
   const [quickPending, setQuickPending] = useState(0)
-  const [quickProcessingCount, setQuickProcessingCount] = useState(0)
   const [quickError, setQuickError] = useState('')
   const [quickAnchor, setQuickAnchor] = useState({ x: 86, y: 82 })
   const [quickSelectedText, setQuickSelectedText] = useState('')
@@ -104,11 +97,9 @@ function App() {
   const [editingMessage, setEditingMessage] = useState(null)
   const [replyingTo, setReplyingTo] = useState(null)
   const [selectedAttachment, setSelectedAttachment] = useState(null)
-  const [selectedFile, setSelectedFile] = useState(null)
-  const [filePreviewUrl, setFilePreviewUrl] = useState('')
-  const [filePickerKind, setFilePickerKind] = useState('file')
-  const [uploadStatus, setUploadStatus] = useState('')
-  const [uploadProgress, setUploadProgress] = useState(null)
+  const [attachmentPreview, setAttachmentPreview] = useState(null)
+  const [uploadingAttachment, setUploadingAttachment] = useState(false)
+  const [fileInputAccept, setFileInputAccept] = useState('image/*')
   const [forwardMessage, setForwardMessage] = useState(null)
   const [forwardConversations, setForwardConversations] = useState([])
   const [forwardSelectedIds, setForwardSelectedIds] = useState([])
@@ -133,13 +124,8 @@ function App() {
   const emojiRef = useRef(null)
   const reactionPickerRef = useRef(null)
   const fileInputRef = useRef(null)
-  const uploadRequestRef = useRef(null)
   const composerInputRef = useRef(null)
   const quickPendingRef = useRef(new Set())
-  const quickProcessingRef = useRef(new Set())
-  const aiPendingRef = useRef(new Set())
-  const aiWaitingTimerRef = useRef(null)
-  const aiErrorTimerRef = useRef(null)
   const pendingSendRef = useRef(new Set())
   const historyLimitRef = useRef(50)
   const hasMoreHistoryRef = useRef(true)
@@ -151,35 +137,9 @@ function App() {
   const typingDebounceRef = useRef(null)
   const conversationIdRef = useRef(null)
 
-  function clearSelectedFile() {
-    uploadRequestRef.current?.abort()
-    uploadRequestRef.current = null
-    if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl)
-    setSelectedFile(null)
-    setFilePreviewUrl('')
-    setSelectedAttachment(null)
-    setUploadStatus('')
-    setUploadProgress(null)
-  }
-
-  const formatFileSize = (bytes) => {
-    if (!Number.isFinite(bytes) || bytes <= 0) return ''
-    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
-
   useEffect(() => {
     conversationIdRef.current = conversationId
   }, [conversationId])
-
-  const clearAiStatusTimers = () => {
-    if (aiWaitingTimerRef.current) window.clearTimeout(aiWaitingTimerRef.current)
-    if (aiErrorTimerRef.current) window.clearTimeout(aiErrorTimerRef.current)
-    aiWaitingTimerRef.current = null
-    aiErrorTimerRef.current = null
-  }
-
-  const aiPendingKey = (conversation, messageId) => `${conversation}:${messageId}`
 
   useEffect(() => {
     const restoreSession = async () => {
@@ -250,11 +210,6 @@ function App() {
       setConversationMembers([])
       setQuickMessages([])
       setQuickPending(0)
-      setQuickProcessingCount(0)
-      quickProcessingRef.current.clear()
-      aiPendingRef.current.clear()
-      clearAiStatusTimers()
-      setAiStatus('idle')
       setSearch('')
       setSearchResults(null)
       setActiveModule('chat')
@@ -821,11 +776,6 @@ function App() {
        */
       socket.on('ai_processing', (data) => {
         console.log('AI đang xử lý:', data)
-        const key = aiPendingKey(data?.conversation_id, data?.message_id)
-        if (aiPendingRef.current.has(key)) {
-          clearAiStatusTimers()
-          setAiStatus('processing')
-        }
         setAiProcessing(true)
       })
     
@@ -843,24 +793,11 @@ function App() {
           upsertMessage(normalized)
           console.log('[AI TRACE] message added:', normalized)
         }
-        const key = aiPendingKey(data?.conversation_id, data?.message_id)
-        if (aiPendingRef.current.has(key)) {
-          aiPendingRef.current.delete(key)
-          clearAiStatusTimers()
-          if (data?.error) {
-            setAiStatus('error')
-            aiErrorTimerRef.current = window.setTimeout(() => setAiStatus('idle'), 6000)
-          } else {
-            setAiStatus('idle')
-          }
-        }
         setAiProcessing(false)
       })
     
       socket.on('dodo_quick_processing', (data) => {
         if (!quickPendingRef.current.has(data?.request_id)) return
-        quickProcessingRef.current.add(data.request_id)
-        setQuickProcessingCount(quickProcessingRef.current.size)
         setQuickError('')
       })
     
@@ -873,9 +810,7 @@ function App() {
           timing: data?.timing || null,
         })
         quickPendingRef.current.delete(requestId)
-        quickProcessingRef.current.delete(requestId)
         setQuickPending(quickPendingRef.current.size)
-        setQuickProcessingCount(quickProcessingRef.current.size)
         if (data.error) {
           setQuickError('Ơ, Dodo bị khựng một chút 😅 Thử lại nha.')
           return
@@ -1001,12 +936,6 @@ function App() {
 
     const attachment = retryMessage?.attachment || selectedAttachment
     if (!text && !attachment) return
-      const selectedConversation = conversations.find((item) => Number(item.id) === Number(conversationId))
-      const aiRequest = !attachment && (
-        /@ai\b/i.test(text) ||
-        selectedConversation?.conversation_type === 'ai' ||
-        selectedConversation?.name === 'Dodo'
-      )
     stopTyping()
 
     const clientMessageId = retryMessage?.client_message_id ||
@@ -1042,10 +971,6 @@ function App() {
       setEmojiOpen(false)
       setAttachOpen(false)
       setCommandBoxOpen(false)
-      if (aiRequest) {
-        clearAiStatusTimers()
-        setAiStatus('connecting')
-      }
 
       /*
        * Gửi lên Chat Server
@@ -1087,16 +1012,8 @@ function App() {
         status: 'sent',
         client_message_id: clientMessageId,
       })
-      if (aiRequest) {
-        const key = aiPendingKey(conversationId, data?.id || clientMessageId)
-        aiPendingRef.current.add(key)
-        setAiStatus('waiting')
-        aiWaitingTimerRef.current = window.setTimeout(() => {
-          if (aiPendingRef.current.size > 0) setAiStatus('starting')
-        }, 8000)
-      }
       setReplyingTo(null)
-      clearSelectedFile()
+      setSelectedAttachment(null)
 
       // Backend emits ai_processing for Dodo and @ai invocations.
     } catch (err) {
@@ -1111,11 +1028,6 @@ function App() {
         err.message ||
           'Gửi tin nhắn thất bại',
       )
-      if (aiRequest) {
-        clearAiStatusTimers()
-        setAiStatus('error')
-        aiErrorTimerRef.current = window.setTimeout(() => setAiStatus('idle'), 6000)
-      }
     } finally {
       pendingSendRef.current.delete(clientMessageId)
     }
@@ -1628,10 +1540,8 @@ function App() {
     } catch (err) {
       console.error(err)
       quickPendingRef.current.delete(requestId)
-      quickProcessingRef.current.delete(requestId)
       setQuickPending(quickPendingRef.current.size)
-      setQuickProcessingCount(quickProcessingRef.current.size)
-      setQuickError('⚠️ AI chưa thể phản hồi lúc này. Bạn có thể thử gửi lại sau.')
+      setQuickError('Ơ, Dodo bị khựng một chút 😅 Thử lại nha.')
     }
   }
 
@@ -1647,82 +1557,71 @@ function App() {
     setEmojiOpen(false)
   }
 
-  const openFilePicker = (kind) => {
-    setFilePickerKind(kind)
-    if (fileInputRef.current) {
-      fileInputRef.current.accept = MEDIA_ACCEPTS[kind]
-      fileInputRef.current.click()
-    }
-    setAttachOpen(false)
-  }
-
-  const uploadMedia = (file) => new Promise((resolve, reject) => {
-    if (!MEDIA_URL) {
-      reject(new Error('Chức năng gửi ảnh/video chưa được cấu hình.'))
-      return
-    }
-
-    const formData = new FormData()
-    formData.append('file', file)
-    const request = new XMLHttpRequest()
-    uploadRequestRef.current = request
-    request.open('POST', `${MEDIA_URL}/api/upload`)
-    request.withCredentials = true
-    request.upload.onprogress = (event) => {
-      if (event.lengthComputable) setUploadProgress(Math.round((event.loaded / event.total) * 100))
-    }
-    request.onload = () => {
-      uploadRequestRef.current = null
-      let data = {}
-      try { data = JSON.parse(request.responseText || '{}') } catch { /* handled below */ }
-      if (request.status >= 200 && request.status < 300 && data.attachment) {
-        resolve(data.attachment)
-        return
-      }
-      if (request.status === 413 || /quá lớn|too large/i.test(data.error || '')) {
-        reject(new Error('File quá lớn.'))
-        return
-      }
-      reject(new Error(data.error || 'Không thể tải file lên. Vui lòng thử lại.'))
-    }
-    request.onerror = () => {
-      uploadRequestRef.current = null
-      reject(new Error('Máy chủ media đang tạm thời không phản hồi.'))
-    }
-    request.onabort = () => {
-      uploadRequestRef.current = null
-      reject(new Error('Đã hủy tải file.'))
-    }
-    request.send(formData)
-  })
-
-  const handleFileChange = async (event) => {
+  /*
+   * Upload file
+   */
+  const handleFileChange = async (
+    event,
+  ) => {
     const file = event.target.files?.[0]
-    event.target.value = ''
     if (!file) return
 
-    const acceptsImage = filePickerKind === 'image' && ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)
-    const acceptsVideo = filePickerKind === 'video' && ['video/mp4', 'video/webm', 'video/quicktime'].includes(file.type)
-    const acceptsFile = filePickerKind === 'file'
-    if (!acceptsImage && !acceptsVideo && !acceptsFile) {
-      setError('Định dạng này chưa được hỗ trợ.')
-      return
-    }
+    const previewUrl = URL.createObjectURL(file)
+    const fileKind = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'file'
+    setAttachmentPreview({
+      kind: fileKind,
+      url: previewUrl,
+      fileName: file.name,
+      fileType: file.type,
+      size: file.size,
+    })
 
-    clearSelectedFile()
-    setError('')
-    setSelectedFile(file)
-    setFilePreviewUrl(URL.createObjectURL(file))
-    setUploadStatus('Đang tải lên...')
-    setUploadProgress(null)
     try {
-      const attachment = await uploadMedia(file)
-      setSelectedAttachment(attachment)
-      setUploadStatus('Đã tải lên')
+      setError('')
+      setUploadingAttachment(true)
+      setSelectedAttachment(null)
+
+      if (!MEDIA_URL) throw new Error('Media Server URL chưa được cấu hình')
+
+      const tokenResponse = await fetch(`${API_URL}/api/auth/session-token`, {
+        method: 'GET',
+        credentials: 'include',
+      })
+      const tokenData = await tokenResponse.json().catch(() => ({}))
+      if (!tokenResponse.ok) throw new Error(tokenData.error || 'Chưa đăng nhập')
+
+      const formData = new FormData()
+      formData.append('file', file)
+      const response = await fetch(`${MEDIA_URL}/api/upload`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          Authorization: `Bearer ${tokenData.token || ''}`,
+        },
+        body: formData,
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'Tải file thất bại')
+
+      if (data.attachment?.attachment_type === 'image' || data.attachment?.attachment_type === 'video') {
+        setAttachmentPreview({
+          kind: data.attachment.attachment_type,
+          url: data.attachment.attachment_type === 'image' ? (data.attachment.file_url || data.attachment.thumbnail_url) : (data.attachment.thumbnail_url || data.attachment.file_url),
+          fileName: data.attachment.file_name || file.name,
+          fileType: data.attachment.mime_type || file.type,
+          size: data.attachment.file_size || file.size,
+        })
+      }
+
+      setSelectedAttachment(data.attachment)
     } catch (err) {
-      if (err.message !== 'Đã hủy tải file.') setError(err.message || 'Không thể tải file lên. Vui lòng thử lại.')
-      setUploadStatus('')
-      setUploadProgress(null)
+      console.error(err)
+      setAttachmentPreview(null)
+      setError(err.message || 'Xử lý file thất bại')
+    } finally {
+      setUploadingAttachment(false)
+      setAttachOpen(false)
+      event.target.value = ''
     }
   }
 
@@ -1838,11 +1737,6 @@ function App() {
         }}
         messages={quickMessages}
         processing={quickPending > 0}
-        statusText={quickProcessingCount > 0
-          ? '🤖 AI đang xử lý...'
-          : quickPending > 0
-            ? '🤖 AI đang kết nối...'
-            : ''}
         error={quickError}
         anchor={quickAnchor}
         selectedText={quickSelectedText}
@@ -2408,13 +2302,23 @@ function App() {
                         )}
                         {renderMessageText(item)}
                         {item.attachment && !item.is_deleted && (
-                          <a className="message-attachment" href={item.attachment.file_url} target="_blank" rel="noreferrer">
-                            {item.attachment.attachment_type === 'image' ? (
-                              <img src={item.attachment.thumbnail_url || item.attachment.file_url} alt={item.attachment.file_name || 'Ảnh đính kèm'} />
-                            ) : item.attachment.attachment_type === 'video' ? (
-                              <video controls playsInline preload="metadata" poster={item.attachment.thumbnail_url || undefined} src={item.attachment.file_url} />
-                            ) : item.attachment.file_name}
-                          </a>
+                          <div className="message-attachment">
+                            {item.attachment.attachment_type === 'image' && (
+                              <a href={item.attachment.file_url} target="_blank" rel="noreferrer">
+                                <img src={item.attachment.file_url || item.attachment.thumbnail_url} alt={item.attachment.file_name || 'Ảnh đính kèm'} />
+                              </a>
+                            )}
+                            {item.attachment.attachment_type === 'video' && (
+                              <video controls playsInline preload="metadata" poster={item.attachment.thumbnail_url || ''} src={item.attachment.file_url}>
+                                Trình duyệt của bạn không hỗ trợ video.
+                              </video>
+                            )}
+                            {item.attachment.attachment_type !== 'image' && item.attachment.attachment_type !== 'video' && (
+                              <a href={item.attachment.file_url} target="_blank" rel="noreferrer">
+                                {item.attachment.file_name || 'Tệp đính kèm'}
+                              </a>
+                            )}
+                          </div>
                         )}
                       </div>
 
@@ -2499,16 +2403,6 @@ function App() {
 
             {/* AI đang xử lý */}
 
-            {!chatSearch.trim() && aiStatus !== 'idle' && (
-              <div className={`ai-status-notice ${aiStatus === 'error' ? 'is-error' : ''}`} role="status" aria-live="polite">
-                {aiStatus === 'connecting' && '🤖 AI đang kết nối...'}
-                {aiStatus === 'waiting' && '⏳ Hệ thống đang kết nối với AI, vui lòng chờ một chút...'}
-                {aiStatus === 'starting' && '🔄 Hệ thống AI đang khởi động lại. Thời gian phản hồi có thể lâu hơn bình thường.'}
-                {aiStatus === 'processing' && '🤖 AI đang xử lý...'}
-                {aiStatus === 'error' && '⚠️ AI chưa thể phản hồi lúc này. Bạn có thể thử gửi lại sau.'}
-              </div>
-            )}
-
             {!chatSearch.trim() &&
               aiProcessing && (
                 <div className="message-row ai">
@@ -2560,10 +2454,8 @@ function App() {
             ref={fileInputRef}
             type="file"
             hidden
-            accept={MEDIA_ACCEPTS[filePickerKind]}
-            onChange={
-              handleFileChange
-            }
+            accept={fileInputAccept}
+            onChange={handleFileChange}
           />
 
           {/* =====================================================
@@ -2581,7 +2473,11 @@ function App() {
 
             <button
               type="button"
-              onClick={() => openFilePicker('image')}
+              onClick={() => {
+                setFileInputAccept('image/*')
+                fileInputRef.current?.click()
+                setAttachOpen(false)
+              }}
             >
               <span>
                 ▣
@@ -2591,7 +2487,11 @@ function App() {
 
             <button
               type="button"
-              onClick={() => openFilePicker('file')}
+              onClick={() => {
+                setFileInputAccept('.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip,.rar')
+                fileInputRef.current?.click()
+                setAttachOpen(false)
+              }}
             >
               <span>
                 □
@@ -2601,7 +2501,11 @@ function App() {
 
             <button
               type="button"
-              onClick={() => openFilePicker('video')}
+              onClick={() => {
+                setFileInputAccept('video/*')
+                fileInputRef.current?.click()
+                setAttachOpen(false)
+              }}
             >
               <span>
                 ◉
@@ -2786,21 +2690,26 @@ function App() {
               COMPOSER
           ====================================================== */}
 
-          {(editingMessage || replyingTo || selectedFile || selectedAttachment) && (
+          {(editingMessage || replyingTo || selectedAttachment || attachmentPreview) && (
             <div className="composer-context">
-              {editingMessage || replyingTo ? (
-                <span>{editingMessage ? `Đang sửa: ${editingMessage.text}` : `Trả lời ${replyingTo.username}: ${replyingTo.text}`}</span>
-              ) : (
-                <div className="composer-media-preview">
-                  {selectedFile?.type.startsWith('image/') && filePreviewUrl && <img src={filePreviewUrl} alt={selectedFile.name} />}
-                  {selectedFile?.type.startsWith('video/') && filePreviewUrl && <video controls playsInline preload="metadata" src={filePreviewUrl} />}
-                  <span>
-                    <strong>{selectedFile?.name || selectedAttachment?.file_name}</strong>
-                    <small>{selectedFile ? formatFileSize(selectedFile.size) : ''}{uploadStatus ? ` · ${uploadStatus}` : ''}{uploadProgress !== null ? ` ${uploadProgress}%` : ''}</small>
-                  </span>
-                </div>
-              )}
-              <button type="button" onClick={() => { setEditingMessage(null); setReplyingTo(null); clearSelectedFile(); setMessage('') }} aria-label="Hủy thao tác">×</button>
+              <span>
+                {editingMessage ? `Đang sửa: ${editingMessage.text}` : replyingTo ? `Trả lời ${replyingTo.username}: ${replyingTo.text}` : `Đã chọn: ${selectedAttachment?.file_name || attachmentPreview?.fileName || 'Tệp đính kèm'}`}
+              </span>
+              <button type="button" onClick={() => { setEditingMessage(null); setReplyingTo(null); setSelectedAttachment(null); setAttachmentPreview(null); setMessage('') }} aria-label="Hủy thao tác">×</button>
+            </div>
+          )}
+
+          {(attachmentPreview || selectedAttachment) && (
+            <div className="composer-media-preview">
+              {selectedAttachment?.attachment_type === 'image' || attachmentPreview?.kind === 'image' ? (
+                <img src={selectedAttachment?.file_url || selectedAttachment?.thumbnail_url || attachmentPreview?.url} alt={selectedAttachment?.file_name || attachmentPreview?.fileName || 'Ảnh'} />
+              ) : selectedAttachment?.attachment_type === 'video' || attachmentPreview?.kind === 'video' ? (
+                <video src={selectedAttachment?.file_url || attachmentPreview?.url} controls playsInline preload="metadata" />
+              ) : null}
+              <span>
+                <strong>{selectedAttachment?.file_name || attachmentPreview?.fileName || 'Tệp đính kèm'}</strong>
+                <small>{uploadingAttachment ? 'Uploading...' : selectedAttachment ? `${Math.round((selectedAttachment.file_size || attachmentPreview?.size || 0) / 1024)} KB` : 'Preview'}</small>
+              </span>
             </div>
           )}
 

@@ -13,19 +13,17 @@ const server = http.createServer(app);
 app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json({ limit: '2mb' }));
 
-const dbPort = Number(process.env.DB_PORT || 3306);
-const dbSsl = process.env.DB_SSL === 'true' || dbPort === 4000;
 const db = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME || 'chat_test',
-  port: dbPort,
+  port: Number(process.env.DB_PORT || 3306),
   waitForConnections: true,
   connectionLimit: Number(process.env.DB_POOL_SIZE || 10),
   queueLimit: 0,
   charset: 'utf8mb4',
-  ...(dbSsl ? { ssl: { minVersion: 'TLSv1.2' } } : {})
+  ...(process.env.DB_SSL === 'true' ? { ssl: { minVersion: 'TLSv1.2' } } : {})
 });
 
 const redis = createClient({ url: process.env.REDIS_URL });
@@ -39,10 +37,9 @@ const FRIEND_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const socketsByUser = new Map();
 const SESSION_COOKIE = 'zalo_session';
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_DAYS || 30) * 24 * 60 * 60 * 1000;
-const PRODUCTION_ORIGIN = 'https://zalo-backend-v2.onrender.com';
 const configuredOrigins = String(process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:4173')
   .split(',')
-  .map((origin) => origin.trim().replace(/\/$/, ''))
+  .map((origin) => origin.trim())
   .filter(Boolean);
 const allowedOrigins = configuredOrigins.includes('*')
   ? [
@@ -52,11 +49,11 @@ const allowedOrigins = configuredOrigins.includes('*')
       'http://127.0.0.1:4173',
       'http://localhost:3000',
       'http://127.0.0.1:3000',
-      PRODUCTION_ORIGIN,
+      'https://zalo-backend-v2.onrender.com',
     ]
   : configuredOrigins;
-if (!allowedOrigins.includes(PRODUCTION_ORIGIN)) {
-  allowedOrigins.push(PRODUCTION_ORIGIN);
+if (!allowedOrigins.includes('https://zalo-backend-v2.onrender.com')) {
+  allowedOrigins.push('https://zalo-backend-v2.onrender.com');
 }
 
 const io = new Server(server, {
@@ -69,7 +66,7 @@ const io = new Server(server, {
 });
 
 function corsOrigin(origin, callback) {
-  if (!origin || origin === PRODUCTION_ORIGIN || allowedOrigins.includes(origin.replace(/\/$/, ''))) {
+  if (!origin || allowedOrigins.includes(origin)) {
     return callback(null, true);
   }
   return callback(new Error('Origin không được phép'));
@@ -186,7 +183,12 @@ async function createSession(userId, req, res) {
 }
 
 async function userFromSession(req) {
-  const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
+  const cookieToken = parseCookies(req.headers.cookie || '')[SESSION_COOKIE];
+  const authHeader = String(req.headers.authorization || '');
+  const headerToken = authHeader.startsWith('Bearer ')
+    ? authHeader.slice(7).trim()
+    : '';
+  const token = headerToken || cookieToken;
   if (!token) return null;
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
   const [rows] = await db.query(
@@ -741,8 +743,19 @@ app.get('/api/auth/me', requireAuth, (req, res) => {
   res.json({ authenticated: true, user: publicUser(req.user) });
 });
 
+app.get('/api/auth/session-token', requireAuth, async (req, res) => {
+  try {
+    const cookieToken = parseCookies(req.headers.cookie || '')[SESSION_COOKIE];
+    if (!cookieToken) return res.status(401).json({ error: 'Chưa đăng nhập' });
+    return res.json({ success: true, token: cookieToken });
+  } catch (error) {
+    console.error('GET /api/auth/session-token', error);
+    return res.status(500).json({ error: 'Không thể cấp token xác thực media' });
+  }
+});
+
 app.post('/api/auth/logout', requireAuth, async (req, res) => {
-  const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
+  const token = parseCookies(req.headers.cookie || '')[SESSION_COOKIE];
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
   await db.query('UPDATE user_sessions SET is_active = 0 WHERE access_token = ?', [tokenHash]);
   clearSessionCookie(res);
