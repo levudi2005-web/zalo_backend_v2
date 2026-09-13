@@ -52,6 +52,9 @@ const allowedOrigins = configuredOrigins.includes('*')
       'https://zalo-backend-v2.onrender.com',
     ]
   : configuredOrigins;
+if (!allowedOrigins.includes('https://zalo-backend-v2.onrender.com')) {
+  allowedOrigins.push('https://zalo-backend-v2.onrender.com');
+}
 
 const io = new Server(server, {
   cors: {
