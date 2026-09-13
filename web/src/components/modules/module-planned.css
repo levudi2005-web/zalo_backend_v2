@@ -7,9 +7,10 @@
 .module-planned-panel,
 .module-setting-row,
 .profile-preview {
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(20, 26, 22, 0.06);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 8px 18px rgba(17, 23, 20, 0.03);
 }
 
 .module-planned-panel {
@@ -70,16 +71,16 @@
 
 .module-filter {
   padding: 7px 11px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid rgba(20, 26, 22, 0.08);
   border-radius: var(--radius-pill);
-  background: white;
+  background: rgba(247, 249, 245, 0.9);
   color: var(--text-secondary);
   font-size: 0.74rem;
 }
 
 .module-filter.active {
-  border-color: rgba(91, 159, 31, 0.2);
-  background: var(--bg-active);
+  border-color: rgba(108, 174, 47, 0.2);
+  background: linear-gradient(135deg, var(--bg-active) 0%, #edf7e1 100%);
   color: var(--accent-strong);
   font-weight: 700;
 }

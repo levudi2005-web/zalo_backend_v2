@@ -42,7 +42,7 @@ const callSessions = new Map();
 const userCallMap = new Map();
 const SESSION_COOKIE = 'zalo_session';
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_DAYS || 30) * 24 * 60 * 60 * 1000;
-const configuredOrigins = String(process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:4173')
+const configuredOrigins = String(process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:4173,http://localhost:4175')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
@@ -52,6 +52,8 @@ const allowedOrigins = configuredOrigins.includes('*')
       'http://127.0.0.1:5173',
       'http://localhost:4173',
       'http://127.0.0.1:4173',
+      'http://localhost:4175',
+      'http://127.0.0.1:4175',
       'http://localhost:3000',
       'http://127.0.0.1:3000',
       'https://zalo-backend-v2.onrender.com',
@@ -59,6 +61,12 @@ const allowedOrigins = configuredOrigins.includes('*')
   : configuredOrigins;
 if (!allowedOrigins.includes('https://zalo-backend-v2.onrender.com')) {
   allowedOrigins.push('https://zalo-backend-v2.onrender.com');
+}
+if (!allowedOrigins.includes('http://localhost:4175')) {
+  allowedOrigins.push('http://localhost:4175');
+}
+if (!allowedOrigins.includes('http://127.0.0.1:4175')) {
+  allowedOrigins.push('http://127.0.0.1:4175');
 }
 
 const io = new Server(server, {
@@ -2649,6 +2657,13 @@ io.on('connection', socket => {
         createdAt: Date.now(),
       };
 
+      console.log('[CALL DEBUG] forwarding call:incoming', {
+        callId,
+        fromUserId: socket.user.id,
+        targetUserId,
+        targetSocketIds: Array.from(socketsByUser.get(targetUserId) || []),
+      });
+
       for (const socketId of socketsByUser.get(targetUserId) || new Set()) {
         io.to(socketId).emit('call:incoming', payload);
       }
@@ -2677,6 +2692,13 @@ io.on('connection', socket => {
         callType: session.callType,
         timestamp: Date.now(),
       };
+
+      console.log('[CALL DEBUG] call:accept forwarded', {
+        callId,
+        initiatorId: session.initiatorId,
+        accepterId: socket.user.id,
+        targetSocketIds: Array.from(socketsByUser.get(session.initiatorId) || []),
+      });
 
       for (const socketId of socketsByUser.get(session.initiatorId) || new Set()) {
         io.to(socketId).emit('call:accept', payload);
@@ -2715,6 +2737,12 @@ io.on('connection', socket => {
       const session = callSessions.get(callId);
       if (!session || !session.participants.has(socket.user.id)) return socket.emit('call:error', { message: 'Không có quyền gửi offer.' });
       if (!session.participants.has(targetUserId) || targetUserId === socket.user.id) return socket.emit('call:error', { message: 'Người nhận offer không hợp lệ.' });
+      console.log('[CALL DEBUG] forwarding call:offer', {
+        callId,
+        fromUserId: socket.user.id,
+        targetUserId,
+        targetSocketIds: Array.from(socketsByUser.get(targetUserId) || []),
+      });
       for (const socketId of socketsByUser.get(targetUserId) || new Set()) {
         io.to(socketId).emit('call:offer', {
           callId,
@@ -2738,6 +2766,12 @@ io.on('connection', socket => {
       const session = callSessions.get(callId);
       if (!session || !session.participants.has(socket.user.id)) return socket.emit('call:error', { message: 'Không có quyền gửi answer.' });
       if (!session.participants.has(targetUserId) || targetUserId === socket.user.id) return socket.emit('call:error', { message: 'Người nhận answer không hợp lệ.' });
+      console.log('[CALL DEBUG] forwarding call:answer', {
+        callId,
+        fromUserId: socket.user.id,
+        targetUserId,
+        targetSocketIds: Array.from(socketsByUser.get(targetUserId) || []),
+      });
       for (const socketId of socketsByUser.get(targetUserId) || new Set()) {
         io.to(socketId).emit('call:answer', {
           callId,
@@ -2760,6 +2794,12 @@ io.on('connection', socket => {
       const session = callSessions.get(callId);
       if (!session || !session.participants.has(socket.user.id)) return;
       if (!session.participants.has(targetUserId) || targetUserId === socket.user.id) return;
+      console.log('[CALL DEBUG] forwarding call:ice-candidate', {
+        callId,
+        fromUserId: socket.user.id,
+        targetUserId,
+        targetSocketIds: Array.from(socketsByUser.get(targetUserId) || []),
+      });
       for (const socketId of socketsByUser.get(targetUserId) || new Set()) {
         io.to(socketId).emit('call:ice-candidate', {
           callId,

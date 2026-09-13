@@ -24,6 +24,7 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
   const localVideoRef = useRef(null)
   const remoteVideoRef = useRef(null)
   const mediaStreamRef = useRef(null)
+  const remoteStreamRef = useRef(null)
   const callIsInitiatorRef = useRef(false)
   const pendingIceCandidatesRef = useRef([])
 
@@ -83,14 +84,23 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
     }
 
     const handleAccept = async (payload) => {
+      console.log('[CALL DEBUG] call:accept received', {
+        callId: payload?.callId,
+        fromUserId: payload?.fromUserId,
+        toUserId: payload?.toUserId,
+        callType: payload?.callType,
+        socketConnected: socket?.connected,
+      })
       setCallState({ status: 'connected', callType: payload.callType || 'audio', remoteUserId: Number(payload.toUserId || payload.fromUserId), callId: payload.callId, incoming: false })
       setError('')
       const stream = await ensureLocalMedia(payload.callType || 'audio')
       if (!stream) return
       if (!peerRef.current) {
-        const peer = createPeerConnection(Number(payload.toUserId || payload.fromUserId))
+        const peer = createPeerConnection(Number(payload.toUserId || payload.fromUserId), payload.callId)
         callIsInitiatorRef.current = false
+        console.log('[CALL DEBUG] creating offer', { callId: payload.callId, targetUserId: Number(payload.toUserId || payload.fromUserId) })
         const offer = await peer.createOffer()
+        console.log('[CALL DEBUG] offer created', { callId: payload.callId, offerType: offer.type })
         await peer.setLocalDescription(offer)
         socket.emit('call:offer', { callId: payload.callId, targetUserId: Number(payload.toUserId || payload.fromUserId), offer })
       }
@@ -107,13 +117,22 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
     const handleOffer = async (payload) => {
       try {
         if (!payload?.offer) return
-        const peer = createPeerConnection(Number(payload.fromUserId))
+        console.log('[CALL DEBUG] remote offer received', {
+          callId: payload.callId,
+          fromUserId: payload.fromUserId,
+          targetUserId: payload.toUserId,
+          offerType: payload.offer?.type,
+        })
+        const peer = createPeerConnection(Number(payload.fromUserId), payload.callId)
         await peer.setRemoteDescription(new RTCSessionDescription(payload.offer))
+        console.log('[CALL DEBUG] remote description set', { callId: payload.callId, type: 'offer' })
         await flushPendingIceCandidates(peer, payload.callId)
         const answer = await peer.createAnswer()
+        console.log('[CALL DEBUG] answer created', { callId: payload.callId, answerType: answer.type })
         await peer.setLocalDescription(answer)
         socket.emit('call:answer', { callId: payload.callId, targetUserId: Number(payload.fromUserId), answer })
       } catch (callError) {
+        console.error('[CALL DEBUG] WebRTC error', callError)
         setError('Không thể thiết lập cuộc gọi.')
       }
     }
@@ -121,9 +140,16 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
     const handleAnswer = async (payload) => {
       if (!peerRef.current || !payload?.answer) return
       try {
+        console.log('[CALL DEBUG] remote answer received', {
+          callId: payload.callId,
+          fromUserId: payload.fromUserId,
+          answerType: payload.answer?.type,
+        })
         await peerRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer))
+        console.log('[CALL DEBUG] remote description set', { callId: payload.callId, type: 'answer' })
         await flushPendingIceCandidates(peerRef.current, payload.callId)
       } catch (answerError) {
+        console.error('[CALL DEBUG] WebRTC error', answerError)
         setError('Không thể xác nhận cuộc gọi.')
       }
     }
@@ -132,6 +158,13 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
       if (!payload?.candidate) return
       const targetCallId = payload.callId || callState.callId
       const peer = peerRef.current
+
+      console.log('[CALL DEBUG] ICE candidate received', {
+        callId: targetCallId,
+        hasPeer: !!peer,
+        hasRemoteDescription: !!peer?.remoteDescription,
+        candidate: payload.candidate?.candidate?.slice(0, 80),
+      })
 
       if (!peer || !peer.remoteDescription) {
         const alreadyQueued = pendingIceCandidatesRef.current.some(
@@ -143,6 +176,7 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
         )
 
         if (!alreadyQueued) {
+          console.warn('[CALL DEBUG] ICE candidate queued', { callId: targetCallId })
           pendingIceCandidatesRef.current.push({
             callId: targetCallId,
             candidate: payload.candidate,
@@ -153,6 +187,7 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
 
       try {
         await peer.addIceCandidate(new RTCIceCandidate(payload.candidate))
+        console.log('[CALL DEBUG] ICE candidate added', { callId: targetCallId })
       } catch (candidateError) {
         const alreadyQueued = pendingIceCandidatesRef.current.some(
           (item) =>
@@ -163,6 +198,7 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
         )
 
         if (!alreadyQueued) {
+          console.warn('[CALL DEBUG] ICE candidate queued', { callId: targetCallId })
           pendingIceCandidatesRef.current.push({
             callId: targetCallId,
             candidate: payload.candidate,
@@ -234,8 +270,15 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop())
       mediaStreamRef.current = null
     }
+    if (remoteStreamRef.current) {
+      remoteStreamRef.current.getTracks().forEach((track) => track.stop())
+      remoteStreamRef.current = null
+    }
     setLocalStream(null)
     setRemoteStream(null)
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null
+    }
     if (peerRef.current) {
       peerRef.current.close()
       peerRef.current = null
@@ -262,34 +305,119 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
     return () => window.clearInterval(timer)
   }, [callState.status])
 
-  const createPeerConnection = (targetUserId) => {
+  const createPeerConnection = (targetUserId, callIdOverride = callState.callId) => {
+    const activeCallId = callIdOverride || callState.callId
+
+    if (peerRef.current && peerRef.current.__callId === activeCallId) {
+      console.log('[CALL DEBUG] reuse existing peer connection', {
+        callId: activeCallId,
+        targetUserId,
+      })
+      return peerRef.current
+    }
+
     if (peerRef.current) {
+      console.log('[CALL DEBUG] closing stale peer before new peer', {
+        staleCallId: peerRef.current.__callId,
+        newCallId: activeCallId,
+      })
       peerRef.current.close()
+      peerRef.current = null
     }
 
     const peer = new RTCPeerConnection({ iceServers: STUN_SERVERS })
+    peer.__callId = activeCallId
     peerRef.current = peer
 
+    console.log('[CALL DEBUG] peer connection created', {
+      targetUserId,
+      callId: activeCallId,
+      hasLocalStream: !!mediaStreamRef.current,
+    })
+
     if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => peer.addTrack(track, mediaStreamRef.current))
+      mediaStreamRef.current.getTracks().forEach((track) => {
+        const senderAlreadyExists = peer.getSenders().some((sender) => sender.track && sender.track.id === track.id)
+        if (senderAlreadyExists) {
+          console.log('[CALL DEBUG] local track already attached', { kind: track.kind, id: track.id, callId: activeCallId })
+          return
+        }
+        console.log('[CALL DEBUG] local track added', { kind: track.kind, id: track.id, enabled: track.enabled, callId: activeCallId })
+        peer.addTrack(track, mediaStreamRef.current)
+      })
     }
 
     peer.ontrack = (event) => {
-      const stream = event.streams?.[0] || new MediaStream()
-      setRemoteStream(stream)
-      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = stream
+      console.log('[CALL DEBUG] ontrack received', {
+        kind: event.track?.kind,
+        trackId: event.track?.id,
+        readyState: event.track?.readyState,
+        enabled: event.track?.enabled,
+        streams: event.streams?.map((stream) => stream.id),
+      })
+
+      if (!remoteStreamRef.current) {
+        remoteStreamRef.current = new MediaStream()
+      }
+
+      if (event.track && !remoteStreamRef.current.getTracks().some((track) => track.id === event.track.id)) {
+        remoteStreamRef.current.addTrack(event.track)
+        console.log('[CALL DEBUG] remote track added', {
+          kind: event.track.kind,
+          trackId: event.track.id,
+          audioTracks: remoteStreamRef.current.getAudioTracks().length,
+          videoTracks: remoteStreamRef.current.getVideoTracks().length,
+        })
+      }
+
+      setRemoteStream(remoteStreamRef.current)
+
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStreamRef.current
+        remoteVideoRef.current.autoplay = true
+        remoteVideoRef.current.playsInline = true
+        remoteVideoRef.current.play().catch((playError) => {
+          console.warn('[CALL DEBUG] remote video play failed', playError)
+        })
+      }
+
+      console.log('[CALL DEBUG] remote stream attached', {
+        streamId: remoteStreamRef.current.id,
+        audioTracks: remoteStreamRef.current.getAudioTracks().length,
+        videoTracks: remoteStreamRef.current.getVideoTracks().length,
+        videoElementExists: !!remoteVideoRef.current,
+        videoReadyState: remoteVideoRef.current?.readyState,
+        videoWidth: remoteVideoRef.current?.videoWidth,
+        videoHeight: remoteVideoRef.current?.videoHeight,
+      })
     }
 
     peer.onicecandidate = (event) => {
       if (!event.candidate || !socket) return
+      const candidateCallId = callIdOverride || callState.callId
+      console.log('[CALL DEBUG] ICE candidate local', {
+        callId: candidateCallId,
+        targetUserId,
+        candidate: event.candidate.candidate?.slice(0, 80),
+      })
       socket.emit('call:ice-candidate', {
-        callId: callState.callId,
+        callId: candidateCallId,
         targetUserId,
         candidate: event.candidate.toJSON(),
       })
     }
 
     peer.onconnectionstatechange = () => {
+      console.log('[CALL DEBUG] connectionState', {
+        callId: activeCallId,
+        connectionState: peer.connectionState,
+        iceConnectionState: peer.iceConnectionState,
+        signalingState: peer.signalingState,
+      })
+      if (peer.connectionState === 'connected') {
+        setCallState((current) => ({ ...current, status: 'connected' }))
+        setError('')
+      }
       if (['failed', 'disconnected', 'closed'].includes(peer.connectionState)) {
         setError('Kết nối cuộc gọi bị mất.')
       }
@@ -299,7 +427,9 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
   }
 
   const ensureLocalMedia = async (callType) => {
+    console.log('[CALL DEBUG] getUserMedia start', { callType, hasNavigatorMediaDevices: !!navigator.mediaDevices, socketConnected: socket?.connected })
     if (!navigator.mediaDevices?.getUserMedia) {
+      console.error('[CALL DEBUG] getUserMedia failed', { reason: 'unsupported', callType })
       setError('Trình duyệt không hỗ trợ microphone/camera.')
       return null
     }
@@ -312,12 +442,19 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
       setLocalStream(stream)
       setIsMuted(false)
       setIsCameraOn(callType !== 'video' || !!stream.getVideoTracks().length)
+      console.log('[CALL DEBUG] getUserMedia success', {
+        hasStream: !!stream,
+        callType,
+        audioTracks: stream.getAudioTracks().length,
+        videoTracks: stream.getVideoTracks().length,
+      })
       console.log('[CALL DEBUG] ensureLocalMedia result', {
         hasStream: !!stream,
         callType,
       })
       return stream
     } catch (mediaError) {
+      console.error('[CALL DEBUG] getUserMedia failed', { callType, error: mediaError?.message || String(mediaError) })
       setError('Không thể truy cập mic/camera. Vui lòng cấp quyền và thử lại.')
       return null
     }
@@ -331,7 +468,10 @@ export function CallsModule({ apiUrl, currentUserId, socket }) {
       socketConnected: socket?.connected,
     })
 
-    if (!socket || !targetUserId) return
+    if (!socket || !targetUserId) {
+      console.warn('[CALL DEBUG] startCall blocked', { hasSocket: !!socket, targetUserId, socketConnected: socket?.connected })
+      return
+    }
     const stream = await ensureLocalMedia(callType)
     console.log('[CALL DEBUG] ensureLocalMedia result', {
       hasStream: !!stream,

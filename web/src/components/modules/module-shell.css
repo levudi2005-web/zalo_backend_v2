@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: linear-gradient(180deg, #fff 0%, #faf9f5 100%);
+  background: linear-gradient(180deg, #fffefb 0%, #f6f7f3 100%);
 }
 
 .module-header {
@@ -13,7 +13,8 @@
   gap: 24px;
   padding: 32px 36px 24px;
   border-bottom: 1px solid var(--border-subtle);
-  background: rgba(255, 255, 255, 0.76);
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(6px);
 }
 
 .module-eyebrow {
@@ -40,12 +41,13 @@
 .module-header-icon {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  width: 46px;
+  height: 46px;
   border-radius: 14px;
-  background: var(--bg-active);
+  background: linear-gradient(135deg, var(--bg-active) 0%, #edf7e1 100%);
   color: var(--accent-strong);
   font-size: 1.2rem;
+  box-shadow: 0 8px 18px rgba(63, 124, 20, 0.08);
 }
 
 .module-body {

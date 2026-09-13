@@ -299,32 +299,26 @@ button {
   height: 100vh;
   height: 100dvh;
   min-height: 0;
-
-  padding: 24px;
-  background: var(--bg-primary);
-
+  padding: 28px;
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
-
   overflow: hidden;
 }
 
 .messenger {
-  width: min(1380px, 100%);
-  height: min(820px, calc(100dvh - 48px));
+  width: min(1400px, 100%);
+  height: min(860px, calc(100dvh - 56px));
   min-height: 0;
-
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(20, 26, 22, 0.06);
+  border-radius: 30px;
   overflow: hidden;
-
   display: grid;
-  grid-template-columns: 72px 312px minmax(0, 1fr);
-
-  box-shadow: var(--shadow-lg);
-
+  grid-template-columns: 82px 330px minmax(0, 1fr);
+  box-shadow: 0 30px 64px rgba(17, 23, 20, 0.12);
+  backdrop-filter: blur(12px);
   animation: appear .45s ease both;
 }
 
@@ -344,75 +338,50 @@ button {
 
 .nav-rail {
   min-height: 0;
-
   border-right: 1px solid var(--border-subtle);
-  background: rgba(255,255,255,0.55);
-
+  background: linear-gradient(180deg, rgba(255,255,255,0.88) 0%, rgba(246,249,244,0.94) 100%);
   display: flex;
   flex-direction: column;
   align-items: center;
-
   padding: 18px 10px 16px;
-
-  transition:
-    width var(--transition),
-    transform var(--transition);
+  transition: width var(--transition), transform var(--transition);
 }
 
 .logo {
-  width: 42px;
-  height: 42px;
-
-  border-radius: 14px;
-
-  background: linear-gradient(145deg, #1c1c1c 0%, #2a2a2a 100%);
+  width: 44px;
+  height: 44px;
+  border-radius: 15px;
+  background: linear-gradient(135deg, #1a1d1b 0%, #2e2f2b 100%);
   color: white;
-
   font-weight: 800;
   font-size: 17px;
-
   cursor: pointer;
-
-  transition:
-    transform var(--transition),
-    background var(--transition),
-    box-shadow var(--transition);
-  box-shadow: 0 10px 18px rgba(18, 18, 18, 0.12);
+  transition: transform var(--transition), box-shadow var(--transition);
+  box-shadow: 0 16px 26px rgba(17, 23, 20, 0.18);
 }
 
 .logo:hover {
-  transform: rotate(-5deg) scale(1.04);
-  box-shadow: 0 12px 26px rgba(18, 18, 18, 0.16);
+  transform: rotate(-6deg) scale(1.04);
+  box-shadow: 0 18px 28px rgba(17, 23, 20, 0.2);
 }
 
 .nav-items {
   display: flex;
   flex-direction: column;
   gap: 10px;
-
   margin-top: 28px;
 }
 
 .nav-icon {
   position: relative;
-
-  width: 44px;
-  height: 44px;
-
+  width: 46px;
+  height: 46px;
   border-radius: 14px;
-
   background: transparent;
   color: var(--text-muted);
-
   cursor: pointer;
-
   font-size: 20px;
-
-  transition:
-    background var(--transition),
-    color var(--transition),
-    transform var(--transition),
-    box-shadow var(--transition);
+  transition: background var(--transition), color var(--transition), transform var(--transition), box-shadow var(--transition);
 }
 
 .nav-icon:hover {
@@ -422,9 +391,9 @@ button {
 }
 
 .nav-icon.active {
-  background: var(--bg-active);
+  background: linear-gradient(135deg, var(--bg-active) 0%, #e7f4d7 100%);
   color: var(--green-dark);
-  box-shadow: inset 0 0 0 1px rgba(91, 159, 31, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(91, 159, 31, 0.14);
 }
 
 .nav-label {
@@ -530,17 +499,12 @@ button {
   height: 100%;
   min-width: 0;
   min-height: 0;
-
   border-right: 1px solid var(--border-subtle);
-
   display: flex;
   flex-direction: column;
-
   overflow: hidden;
-
-  transition:
-    width var(--transition),
-    opacity var(--transition);
+  background: linear-gradient(180deg, #f9faf7 0%, #f4f6f0 100%);
+  transition: width var(--transition), opacity var(--transition);
 }
 
 .chat-sidebar.hidden {
@@ -557,30 +521,23 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-
   margin-bottom: 14px;
 }
 
 .title-row h1 {
   margin: 0;
-
   font-size: 1.1rem;
   font-weight: 700;
 }
 
 .small-icon {
-  width: 30px;
-  height: 30px;
-
+  width: 32px;
+  height: 32px;
   border-radius: 10px;
-
   background: var(--bg-hover);
-
   cursor: pointer;
-
   font-size: 22px;
   line-height: 1;
-
   transition: transform var(--transition), background var(--transition);
 }
 
@@ -590,48 +547,34 @@ button {
 }
 
 .search {
-  height: 40px;
-
-  background: var(--bg-secondary);
-
-  border-radius: var(--radius-md);
-
+  height: 42px;
+  background: rgba(255,255,255,0.72);
+  border-radius: 14px;
   display: flex;
   align-items: center;
-
-  padding: 0 10px;
-
-  transition:
-    background var(--transition),
-    box-shadow var(--transition),
-    border-color var(--transition);
-  border: 1px solid transparent;
+  padding: 0 12px;
+  transition: background var(--transition), box-shadow var(--transition), border-color var(--transition);
+  border: 1px solid rgba(20,26,22,0.04);
 }
 
 .search:focus-within {
   background: white;
-  border-color: rgba(91, 159, 31, 0.2);
-  box-shadow: 0 0 0 3px rgba(91, 159, 31, 0.08);
+  border-color: rgba(108, 174, 47, 0.2);
+  box-shadow: 0 0 0 4px rgba(108, 174, 47, 0.06);
 }
 
 .search button {
   background: transparent;
-
   font-size: 18px;
-
   color: var(--text-muted);
-
   cursor: pointer;
 }
 
 .search input {
   width: 100%;
-
   border: 0;
   outline: 0;
-
   background: transparent;
-
   margin-left: 6px;
   font-size: 0.92rem;
 }
@@ -643,7 +586,7 @@ button {
   overscroll-behavior: contain;
   padding: 0 10px 10px;
   scrollbar-width: thin;
-  scrollbar-color: #d4d4cf transparent;
+  scrollbar-color: #d5d8d2 transparent;
 }
 
 .chat-list::-webkit-scrollbar {
@@ -661,29 +604,17 @@ button {
 
 .chat-item {
   width: 100%;
-
   display: flex;
   align-items: center;
-
   gap: 10px;
-
-  padding: 10px 10px;
-
-  border-radius: 14px;
-
+  padding: 11px 10px;
+  border-radius: 16px;
   background: transparent;
-
   text-align: left;
-
   cursor: pointer;
-
   animation: slideIn .35s both;
   animation-delay: var(--delay);
-
-  transition:
-    background var(--transition),
-    transform var(--transition),
-    box-shadow var(--transition);
+  transition: background var(--transition), transform var(--transition), box-shadow var(--transition), border-color var(--transition);
 }
 
 @keyframes slideIn {
@@ -699,13 +630,13 @@ button {
 }
 
 .chat-item:hover {
-  background: var(--bg-hover);
+  background: rgba(255,255,255,0.7);
   transform: translateX(2px);
 }
 
 .chat-item.selected {
-  background: var(--bg-active);
-  box-shadow: inset 0 0 0 1px rgba(91, 159, 31, 0.08);
+  background: linear-gradient(135deg, #edf6e4 0%, #f8fbf4 100%);
+  box-shadow: inset 0 0 0 1px rgba(108, 174, 47, 0.12);
 }
 
 .ai-chat-brief {
@@ -960,30 +891,25 @@ button {
   height: 100%;
   min-width: 0;
   min-height: 0;
-
   display: flex;
   flex-direction: column;
-
   position: relative;
-
   overflow: hidden;
+  background: linear-gradient(180deg, #fffefc 0%, #f8f8f4 100%);
 }
 
 .chat-header {
   flex: 0 0 auto;
-
-  min-height: 80px;
-
-  padding: 12px 18px 10px;
-
+  min-height: 82px;
+  padding: 14px 20px 12px;
   border-bottom: 1px solid var(--border-subtle);
-
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(255,255,255,0.7);
+  background: rgba(255,255,255,0.78);
   position: relative;
   z-index: var(--z-sticky);
+  backdrop-filter: blur(6px);
 }
 
 .header-person {
@@ -1037,27 +963,23 @@ button {
 .header-buttons > button {
   width: 36px;
   height: 36px;
-
   background: transparent;
-
   border-radius: 10px;
-
   color: var(--text-muted);
-
   cursor: pointer;
-
   font-size: 18px;
-
-  transition:
-    background var(--transition),
-    color var(--transition),
-    transform var(--transition);
+  transition: background var(--transition), color var(--transition), transform var(--transition);
 }
 
 .header-buttons > button:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
   transform: translateY(-1px);
+}
+
+.header-buttons > button.active {
+  background: var(--green-soft);
+  color: var(--green-dark);
 }
 
 .dropdown {
@@ -1120,18 +1042,14 @@ button {
 
 .messages {
   flex: 1 1 auto;
-
   min-width: 0;
   min-height: 0;
   height: 0;
-
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-
-  padding: 20px 24px 24px;
-
-  background: linear-gradient(180deg, #ffffff 0%, #fffdf9 100%);
+  padding: 22px 24px 24px;
+  background: linear-gradient(180deg, #ffffff 0%, #f9faf7 100%);
   scrollbar-width: thin;
   scrollbar-color: #d4d4cf transparent;
 }
@@ -1261,29 +1179,20 @@ button {
 }
 
 .bubble {
-  padding: 10px 14px;
-
-  border-radius: 18px;
-
-  background: var(--bubble);
-
+  padding: 11px 14px;
+  border-radius: 18px 18px 18px 8px;
+  background: linear-gradient(180deg, #f4f4f1 0%, #ecece6 100%);
   color: var(--text-primary);
-
   line-height: 1.5;
-
   font-size: 0.94rem;
-
   white-space: pre-wrap;
-
-  transition:
-    transform var(--transition),
-    box-shadow var(--transition);
-  box-shadow: 0 2px 8px rgba(23, 29, 26, 0.03);
+  transition: transform var(--transition), box-shadow var(--transition);
+  box-shadow: 0 10px 24px rgba(17, 23, 20, 0.04);
 }
 
 .bubble:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(0,0,0,.04);
+  box-shadow: 0 12px 26px rgba(17, 23, 20, 0.06);
 }
 
 .message-mention {
@@ -1336,10 +1245,9 @@ button {
 }
 
 .message-row.me .bubble {
-  background: linear-gradient(135deg, #1e2220 0%, #111111 100%);
-  color: white;
-
-  border-top-right-radius: 8px;
+  background: linear-gradient(135deg, #213123 0%, #111a15 100%);
+  color: #f4f7f1;
+  border-radius: 18px 18px 8px 18px;
 }
 
 .message-group time {
@@ -1617,23 +1525,16 @@ button {
 
 .composer {
   flex: 0 0 auto;
-
-  min-height: 74px;
-
+  min-height: 78px;
   border-top: 1px solid var(--border-subtle);
-
-  padding: 10px 16px;
-
+  padding: 12px 18px;
   display: flex;
   align-items: center;
-
   gap: 8px;
-
   position: relative;
-
-  background: rgba(255,255,255,0.85);
-
+  background: rgba(255,255,255,0.88);
   z-index: 5;
+  backdrop-filter: blur(6px);
 }
 
 .composer-icon {
@@ -1771,30 +1672,21 @@ button {
 }
 
 .send {
-  width: 40px;
-  height: 40px;
-
+  width: 42px;
+  height: 42px;
   border-radius: var(--radius-pill);
-
-  background: linear-gradient(135deg, #1f2220 0%, #141914 100%);
+  background: linear-gradient(135deg, var(--accent-strong) 0%, var(--accent) 100%);
   color: white;
-
   cursor: pointer;
-
   font-size: 18px;
   font-weight: 700;
-
-  transition:
-    transform var(--transition),
-    background var(--transition),
-    opacity var(--transition),
-    box-shadow var(--transition);
-  box-shadow: 0 10px 20px rgba(21, 24, 21, 0.12);
+  transition: transform var(--transition), background var(--transition), opacity var(--transition), box-shadow var(--transition);
+  box-shadow: 0 14px 28px rgba(63, 124, 20, 0.24);
 }
 
 .send:hover:not(:disabled) {
   transform: translateY(-1px) scale(1.02);
-  background: linear-gradient(135deg, #7bc335 0%, #5b9f1f 100%);
+  background: linear-gradient(135deg, #6cae2f 0%, #4d8e1d 100%);
 }
 
 .send:disabled {
