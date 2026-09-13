@@ -17,6 +17,11 @@ import './App.css'
 
 const API_URL = (import.meta.env.VITE_API_URL || 'https://zalo-backend-v2.onrender.com').replace(/\/$/, '')
 const MEDIA_URL = String(import.meta.env.VITE_MEDIA_URL || '').replace(/\/$/, '')
+const MEDIA_ACCEPTS = {
+  image: 'image/jpeg,image/png,image/webp,image/gif',
+  video: 'video/mp4,video/webm,video/quicktime',
+  file: '*/*',
+}
 
 const emojis = ['😀', '😂', '😍', '👍', '🔥', '🎉', '😎', '❤️']
 
@@ -99,6 +104,11 @@ function App() {
   const [editingMessage, setEditingMessage] = useState(null)
   const [replyingTo, setReplyingTo] = useState(null)
   const [selectedAttachment, setSelectedAttachment] = useState(null)
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [filePreviewUrl, setFilePreviewUrl] = useState('')
+  const [filePickerKind, setFilePickerKind] = useState('file')
+  const [uploadStatus, setUploadStatus] = useState('')
+  const [uploadProgress, setUploadProgress] = useState(null)
   const [forwardMessage, setForwardMessage] = useState(null)
   const [forwardConversations, setForwardConversations] = useState([])
   const [forwardSelectedIds, setForwardSelectedIds] = useState([])
@@ -123,6 +133,7 @@ function App() {
   const emojiRef = useRef(null)
   const reactionPickerRef = useRef(null)
   const fileInputRef = useRef(null)
+  const uploadRequestRef = useRef(null)
   const composerInputRef = useRef(null)
   const quickPendingRef = useRef(new Set())
   const quickProcessingRef = useRef(new Set())
@@ -139,6 +150,23 @@ function App() {
   const typingStateRef = useRef({ isTyping: false, conversationId: null })
   const typingDebounceRef = useRef(null)
   const conversationIdRef = useRef(null)
+
+  function clearSelectedFile() {
+    uploadRequestRef.current?.abort()
+    uploadRequestRef.current = null
+    if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl)
+    setSelectedFile(null)
+    setFilePreviewUrl('')
+    setSelectedAttachment(null)
+    setUploadStatus('')
+    setUploadProgress(null)
+  }
+
+  const formatFileSize = (bytes) => {
+    if (!Number.isFinite(bytes) || bytes <= 0) return ''
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
 
   useEffect(() => {
     conversationIdRef.current = conversationId
@@ -1068,7 +1096,7 @@ function App() {
         }, 8000)
       }
       setReplyingTo(null)
-      setSelectedAttachment(null)
+      clearSelectedFile()
 
       // Backend emits ai_processing for Dodo and @ai invocations.
     } catch (err) {
@@ -1619,41 +1647,82 @@ function App() {
     setEmojiOpen(false)
   }
 
-  /*
-   * Upload file
-   */
-  const handleFileChange = async (
-    event,
-  ) => {
-    const file =
-      event.target.files?.[0]
+  const openFilePicker = (kind) => {
+    setFilePickerKind(kind)
+    if (fileInputRef.current) {
+      fileInputRef.current.accept = MEDIA_ACCEPTS[kind]
+      fileInputRef.current.click()
+    }
+    setAttachOpen(false)
+  }
 
+  const uploadMedia = (file) => new Promise((resolve, reject) => {
+    if (!MEDIA_URL) {
+      reject(new Error('Chức năng gửi ảnh/video chưa được cấu hình.'))
+      return
+    }
+
+    const formData = new FormData()
+    formData.append('file', file)
+    const request = new XMLHttpRequest()
+    uploadRequestRef.current = request
+    request.open('POST', `${MEDIA_URL}/api/upload`)
+    request.withCredentials = true
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) setUploadProgress(Math.round((event.loaded / event.total) * 100))
+    }
+    request.onload = () => {
+      uploadRequestRef.current = null
+      let data = {}
+      try { data = JSON.parse(request.responseText || '{}') } catch { /* handled below */ }
+      if (request.status >= 200 && request.status < 300 && data.attachment) {
+        resolve(data.attachment)
+        return
+      }
+      if (request.status === 413 || /quá lớn|too large/i.test(data.error || '')) {
+        reject(new Error('File quá lớn.'))
+        return
+      }
+      reject(new Error(data.error || 'Không thể tải file lên. Vui lòng thử lại.'))
+    }
+    request.onerror = () => {
+      uploadRequestRef.current = null
+      reject(new Error('Máy chủ media đang tạm thời không phản hồi.'))
+    }
+    request.onabort = () => {
+      uploadRequestRef.current = null
+      reject(new Error('Đã hủy tải file.'))
+    }
+    request.send(formData)
+  })
+
+  const handleFileChange = async (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
     if (!file) return
 
+    const acceptsImage = filePickerKind === 'image' && ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)
+    const acceptsVideo = filePickerKind === 'video' && ['video/mp4', 'video/webm', 'video/quicktime'].includes(file.type)
+    const acceptsFile = filePickerKind === 'file'
+    if (!acceptsImage && !acceptsVideo && !acceptsFile) {
+      setError('Định dạng này chưa được hỗ trợ.')
+      return
+    }
+
+    clearSelectedFile()
+    setError('')
+    setSelectedFile(file)
+    setFilePreviewUrl(URL.createObjectURL(file))
+    setUploadStatus('Đang tải lên...')
+    setUploadProgress(null)
     try {
-      setError('')
-      if (!MEDIA_URL) throw new Error('Media Server URL chưa được cấu hình')
-
-      const formData = new FormData()
-      formData.append('file', file)
-      const response = await fetch(`${MEDIA_URL}/api/upload`, {
-        method: 'POST',
-        credentials: 'include',
-        body: formData,
-      })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data.error || 'Tải file thất bại')
-      setSelectedAttachment(data.attachment)
+      const attachment = await uploadMedia(file)
+      setSelectedAttachment(attachment)
+      setUploadStatus('Đã tải lên')
     } catch (err) {
-      console.error(err)
-
-      setError(
-        err.message ||
-          'Xử lý file thất bại',
-      )
-    } finally {
-      setAttachOpen(false)
-      event.target.value = ''
+      if (err.message !== 'Đã hủy tải file.') setError(err.message || 'Không thể tải file lên. Vui lòng thử lại.')
+      setUploadStatus('')
+      setUploadProgress(null)
     }
   }
 
@@ -2340,8 +2409,10 @@ function App() {
                         {renderMessageText(item)}
                         {item.attachment && !item.is_deleted && (
                           <a className="message-attachment" href={item.attachment.file_url} target="_blank" rel="noreferrer">
-                            {item.attachment.attachment_type === 'image' && item.attachment.thumbnail_url ? (
-                              <img src={item.attachment.thumbnail_url} alt={item.attachment.file_name || 'Ảnh đính kèm'} />
+                            {item.attachment.attachment_type === 'image' ? (
+                              <img src={item.attachment.thumbnail_url || item.attachment.file_url} alt={item.attachment.file_name || 'Ảnh đính kèm'} />
+                            ) : item.attachment.attachment_type === 'video' ? (
+                              <video controls playsInline preload="metadata" poster={item.attachment.thumbnail_url || undefined} src={item.attachment.file_url} />
                             ) : item.attachment.file_name}
                           </a>
                         )}
@@ -2489,6 +2560,7 @@ function App() {
             ref={fileInputRef}
             type="file"
             hidden
+            accept={MEDIA_ACCEPTS[filePickerKind]}
             onChange={
               handleFileChange
             }
@@ -2509,10 +2581,7 @@ function App() {
 
             <button
               type="button"
-              onClick={() => {
-                fileInputRef.current?.click()
-                setAttachOpen(false)
-              }}
+              onClick={() => openFilePicker('image')}
             >
               <span>
                 ▣
@@ -2522,10 +2591,7 @@ function App() {
 
             <button
               type="button"
-              onClick={() => {
-                fileInputRef.current?.click()
-                setAttachOpen(false)
-              }}
+              onClick={() => openFilePicker('file')}
             >
               <span>
                 □
@@ -2535,10 +2601,7 @@ function App() {
 
             <button
               type="button"
-              onClick={() => {
-                fileInputRef.current?.click()
-                setAttachOpen(false)
-              }}
+              onClick={() => openFilePicker('video')}
             >
               <span>
                 ◉
@@ -2723,12 +2786,21 @@ function App() {
               COMPOSER
           ====================================================== */}
 
-          {(editingMessage || replyingTo || selectedAttachment) && (
+          {(editingMessage || replyingTo || selectedFile || selectedAttachment) && (
             <div className="composer-context">
-              <span>
-                {editingMessage ? `Đang sửa: ${editingMessage.text}` : replyingTo ? `Trả lời ${replyingTo.username}: ${replyingTo.text}` : `Đã chọn: ${selectedAttachment.file_name}`}
-              </span>
-              <button type="button" onClick={() => { setEditingMessage(null); setReplyingTo(null); setSelectedAttachment(null); setMessage('') }} aria-label="Hủy thao tác">×</button>
+              {editingMessage || replyingTo ? (
+                <span>{editingMessage ? `Đang sửa: ${editingMessage.text}` : `Trả lời ${replyingTo.username}: ${replyingTo.text}`}</span>
+              ) : (
+                <div className="composer-media-preview">
+                  {selectedFile?.type.startsWith('image/') && filePreviewUrl && <img src={filePreviewUrl} alt={selectedFile.name} />}
+                  {selectedFile?.type.startsWith('video/') && filePreviewUrl && <video controls playsInline preload="metadata" src={filePreviewUrl} />}
+                  <span>
+                    <strong>{selectedFile?.name || selectedAttachment?.file_name}</strong>
+                    <small>{selectedFile ? formatFileSize(selectedFile.size) : ''}{uploadStatus ? ` · ${uploadStatus}` : ''}{uploadProgress !== null ? ` ${uploadProgress}%` : ''}</small>
+                  </span>
+                </div>
+              )}
+              <button type="button" onClick={() => { setEditingMessage(null); setReplyingTo(null); clearSelectedFile(); setMessage('') }} aria-label="Hủy thao tác">×</button>
             </div>
           )}
 

@@ -188,6 +188,49 @@ button {
   border-radius: 8px;
 }
 
+.message-attachment video {
+  display: block;
+  width: min(320px, 100%);
+  max-height: 320px;
+  border-radius: 8px;
+  background: #101311;
+}
+
+.composer-media-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.composer-media-preview img,
+.composer-media-preview video {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #101311;
+}
+
+.composer-media-preview span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.composer-media-preview strong,
+.composer-media-preview small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-media-preview small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .bubble.deleted {
   color: var(--text-muted);
   font-style: italic;
